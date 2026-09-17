@@ -5,10 +5,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import mermaid from "mermaid";
 import { Edit3, Clock, Tag, ExternalLink, ArrowLeftRight } from "lucide-react";
 import { PageDetail } from "@/types";
 import { BacklinksContent } from "./backlinks-panel";
+import { MermaidBlock } from "./mermaid-block";
 
 interface WikiViewerProps {
   page: PageDetail;
@@ -21,36 +21,6 @@ export function WikiViewer({
   onEdit,
   onNavigateWikilink,
 }: WikiViewerProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: "dark",
-      securityLevel: "loose",
-    });
-    
-    // Render mermaid diagrams
-    if (containerRef.current) {
-      const codeBlocks = containerRef.current.querySelectorAll("pre code.language-mermaid");
-      codeBlocks.forEach((block, index) => {
-        const id = `mermaid-${index}-${Date.now()}`;
-        const graphDefinition = block.textContent || "";
-        const parent = block.parentElement;
-        if (parent && graphDefinition.trim()) {
-          const div = document.createElement("div");
-          div.id = id;
-          div.className = "mermaid flex justify-center my-4 overflow-x-auto";
-          div.textContent = graphDefinition;
-          parent.replaceWith(div);
-          mermaid.run({ nodes: [div] }).catch((err) => {
-            console.warn("Mermaid render error:", err);
-          });
-        }
-      });
-    }
-  }, [page.content]);
-
   // Transform [[wikilinks]] to clickable HTML or markdown format
   const processWikilinks = (content: string) => {
     return content.replace(/\[\[(.*?)\]\]/g, (match, p1) => {
@@ -118,11 +88,26 @@ export function WikiViewer({
       </div>
 
       {/* Markdown Content */}
-      <div ref={containerRef} className="markdown-body text-foreground">
+      <div className="markdown-body text-foreground">
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
           components={{
+            code: ({ className, children, ...props }) => {
+              const match = /language-(\w+)/.exec(className || "");
+              const language = match ? match[1] : "";
+              const value = String(children).replace(/\n$/, "");
+
+              if (language === "mermaid") {
+                return <MermaidBlock chart={value} />;
+              }
+
+              return (
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              );
+            },
             a: ({ href, children, ...props }) => {
               if (href && href.startsWith("#wikilink:")) {
                 const target = decodeURIComponent(href.replace("#wikilink:", ""));

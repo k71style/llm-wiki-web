@@ -8,6 +8,7 @@ import rehypeKatex from "rehype-katex";
 import { Send, Bot, User, Sparkles, Terminal, Loader2 } from "lucide-react";
 import { TopicInfo } from "@/types";
 import { getWebSocketUrl } from "@/lib/api";
+import { MermaidBlock } from "../wiki/mermaid-block";
 
 interface Message {
   id: string;
@@ -182,6 +183,23 @@ export function ClaudeChat({ topic, onSwitchToTerminal }: ClaudeChatProps) {
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
+                  components={{
+                    code: ({ className, children, ...props }) => {
+                      const match = /language-(\w+)/.exec(className || "");
+                      const language = match ? match[1] : "";
+                      const value = String(children).replace(/\n$/, "");
+
+                      if (language === "mermaid") {
+                        return <MermaidBlock chart={value} />;
+                      }
+
+                      return (
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      );
+                    },
+                  }}
                 >
                   {m.text}
                 </ReactMarkdown>

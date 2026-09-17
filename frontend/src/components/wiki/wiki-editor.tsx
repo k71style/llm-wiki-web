@@ -7,6 +7,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Save, X, Eye, Columns, Trash2, Edit3 } from "lucide-react";
 import { PageDetail } from "@/types";
+import { MermaidBlock } from "./mermaid-block";
 
 interface WikiEditorProps {
   page: PageDetail | { path: string; raw_content?: string; title?: string };
@@ -148,6 +149,23 @@ export function WikiEditor({
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
+                components={{
+                  code: ({ className, children, ...props }) => {
+                    const match = /language-(\w+)/.exec(className || "");
+                    const language = match ? match[1] : "";
+                    const value = String(children).replace(/\n$/, "");
+
+                    if (language === "mermaid") {
+                      return <MermaidBlock chart={value} />;
+                    }
+
+                    return (
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    );
+                  },
+                }}
               >
                 {content}
               </ReactMarkdown>
