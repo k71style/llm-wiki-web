@@ -96,10 +96,12 @@ pipeline {
                     
                     while (retryCount < maxRetries && !isHealthy) {
                         try {
-                            // 백엔드 헬스체크
-                            sh "curl -f http://localhost:${BACKEND_PORT}/api/health"
-                            // 프론트엔드 응답 체크
-                            sh "curl -f http://localhost:${FRONTEND_PORT}"
+                            // 백엔드 헬스체크 (DooD 환경 컨테이너 내부 직접 검증)
+                            sh '''
+                                export PATH="$HOME/bin:$PATH"
+                                DC="docker-compose"
+                                $DC -p ${COMPOSE_PROJECT_NAME} exec -T backend curl -f http://localhost:8000/api/health
+                            '''
                             
                             isHealthy = true
                             echo "LLM Wiki Web services are healthy and running!"
