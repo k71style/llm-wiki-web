@@ -115,17 +115,22 @@ docker compose down
 
 서버 내 Jenkins를 사용하여 [Jenkinsfile](../Jenkinsfile) 기반으로 원클릭/자동 빌드 및 배포를 수행할 수 있습니다.
 
-#### 1) Jenkins Pipeline Job 생성 방법
-1. Jenkins 대시보드에서 **새로운 Item (New Item)** 클릭
-2. Item 이름 입력 (예: `llm-wiki-web`) -> **Pipeline** 선택 후 [OK]
-3. **Pipeline 설정**:
+#### 1) Jenkins 접속 및 Pipeline Job 생성
+* **Jenkins 접속 URL**: [http://k71style.xyz:9000](http://k71style.xyz:9000)
+* **GitHub Webhook**: `http://k71style.xyz:9000/github-webhook/` (**등록 완료됨**)
+
+1. Jenkins 대시보드([http://k71style.xyz:9000](http://k71style.xyz:9000)) 접속 후 **새로운 Item (New Item)** 클릭
+2. Item 이름 입력: `llm-wiki-web` ➔ **Pipeline** 선택 후 [OK]
+3. **빌드 유발 (Build Triggers)**:
+   - ✅ **`GitHub hook trigger for GITScm polling`** 체크
+4. **Pipeline 설정**:
    - **Definition**: `Pipeline script from SCM`
    - **SCM**: `Git`
    - **Repository URL**: `https://github.com/k71style/llm-wiki-web.git`
    - **Credentials**: `github-credentials` (기존 저장된 계정/토큰 선택)
    - **Branches to build**: `*/main`
    - **Script Path**: `Jenkinsfile`
-4. [저장(Save)] 후 **지금 빌드(Build Now)** 실행
+5. [저장(Save)] 후 **지금 빌드(Build Now)** 실행
 
 #### 2) 파이프라인 동작 단계
 1. **Checkout**: GitHub `main` 브랜치 소스코드 체크아웃
