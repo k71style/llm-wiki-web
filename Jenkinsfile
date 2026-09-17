@@ -56,6 +56,35 @@ pipeline {
                         
                         echo "docker-compose.yml file found!"
                         
+                        # Cloudflare DNS 자동 등록 시도
+                        echo "Checking for Cloudflare credentials in Docker volumes..."
+                        CF_TOKEN=$(docker run --rm -v zzooni4_certbot-conf:/certs alpine sh -c 'grep -hoE "[a-zA-Z0-9_-]{35,50}" /certs/cloudflare.ini /certs/*.ini 2>/dev/null | head -n 1' || true)
+                        if [ -n "$CF_TOKEN" ]; then
+                            echo "Found Cloudflare token! Checking/Adding DNS record for wiki.k71style.xyz..."
+                            ZONE_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=k71style.xyz" \
+                                -H "Authorization: Bearer $CF_TOKEN" \
+                                -H "Content-Type: application/json" | grep -o '"id":"[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
+                            if [ -n "$ZONE_ID" ]; then
+                                echo "Zone ID: $ZONE_ID"
+                                # Check if wiki record already exists
+                                REC_EXISTS=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?name=wiki.k71style.xyz" \
+                                    -H "Authorization: Bearer $CF_TOKEN" \
+                                    -H "Content-Type: application/json" | grep -o '"count":[0-9]*' | cut -d: -f2 || echo 0)
+                                if [ "$REC_EXISTS" = "0" ] || [ -z "$REC_EXISTS" ]; then
+                                    echo "Creating A record wiki.k71style.xyz -> 121.126.171.169..."
+                                    curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+                                        -H "Authorization: Bearer $CF_TOKEN" \
+                                        -H "Content-Type: application/json" \
+                                        --data '{"type":"A","name":"wiki","content":"121.126.171.169","ttl":1,"proxied":true}'
+                                    echo "DNS Record created successfully!"
+                                else
+                                    echo "DNS Record for wiki.k71style.xyz already exists."
+                                fi
+                            fi
+                        else
+                            echo "No cloudflare.ini token found in volume."
+                        fi
+
                         # 데이터 디렉터리 권한 보장
                         mkdir -p data/wikis
                         
@@ -71,6 +100,26 @@ pipeline {
                         echo "Building and starting LLM Wiki Web containers..."
                         $DC -p ${COMPOSE_PROJECT_NAME} up --build -d
                         
+                        # Nginx Reverse Proxy 설정 동적 주입 및 리로드
+                        echo "Configuring Nginx Reverse Proxy for wiki.k71style.xyz..."
+                        if [ -f "nginx/wiki.k71style.xyz.conf" ]; then
+                            # zzooni4-network 네트워크 연결 (컨테이너 간 이름 기반 통신 보장)
+                            NET_NAME=$(docker network ls --format '{{.Name}}' | grep -E "zzooni4.*network" | head -n 1 || true)
+                            if [ -n "$NET_NAME" ]; then
+                                echo "Connecting containers to $NET_NAME..."
+                                docker network connect $NET_NAME llm-wiki-backend || true
+                                docker network connect $NET_NAME llm-wiki-frontend || true
+                            fi
+
+                            # Nginx 컨테이너에 설정 파일 복사 및 reload
+                            if docker ps --format '{{.Names}}' | grep -q "zzooni4-nginx"; then
+                                echo "Updating zzooni4-nginx configuration..."
+                                docker cp nginx/wiki.k71style.xyz.conf zzooni4-nginx:/etc/nginx/conf.d/wiki.conf
+                                docker exec zzooni4-nginx nginx -t && docker exec zzooni4-nginx nginx -s reload
+                                echo "Nginx reloaded successfully!"
+                            fi
+                        fi
+
                         # 컨테이너 상태 요약 출력
                         echo "Checking container status..."
                         $DC -p ${COMPOSE_PROJECT_NAME} ps
