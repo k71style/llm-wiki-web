@@ -1,4 +1,4 @@
-﻿# 🚀 LLM-Wiki Web 배포 및 운영 가이드 (Deployment Guide)
+# 🚀 LLM-Wiki Web 배포 및 운영 가이드 (Deployment Guide)
 
 본 문서는 `llm-wiki-web` 서비스를 `wiki.k71style.xyz` 도메인 환경에 배포하고, Docker Compose 컨테이너 오케스트레이션 및 GitHub Actions CI/CD 파이프라인을 운영하기 위한 종합 지침서입니다.
 
@@ -107,11 +107,39 @@ docker compose down
 
 ---
 
-## 5. 🔄 GitHub Actions CI/CD 파이프라인
+---
+
+## 5. 🔄 CI/CD 파이프라인 구성
+
+### 옵션 A: 🏗️ Jenkins 자동 배포 파이프라인 (권장 / 기존 zzooni4와 동일 스택)
+
+서버 내 Jenkins를 사용하여 [Jenkinsfile](../Jenkinsfile) 기반으로 원클릭/자동 빌드 및 배포를 수행할 수 있습니다.
+
+#### 1) Jenkins Pipeline Job 생성 방법
+1. Jenkins 대시보드에서 **새로운 Item (New Item)** 클릭
+2. Item 이름 입력 (예: `llm-wiki-web`) -> **Pipeline** 선택 후 [OK]
+3. **Pipeline 설정**:
+   - **Definition**: `Pipeline script from SCM`
+   - **SCM**: `Git`
+   - **Repository URL**: `https://github.com/k71style/llm-wiki-web.git`
+   - **Credentials**: `github-credentials` (기존 저장된 계정/토큰 선택)
+   - **Branches to build**: `*/main`
+   - **Script Path**: `Jenkinsfile`
+4. [저장(Save)] 후 **지금 빌드(Build Now)** 실행
+
+#### 2) 파이프라인 동작 단계
+1. **Checkout**: GitHub `main` 브랜치 소스코드 체크아웃
+2. **Deploy**: 호스트 Docker 데몬을 통해 `docker-compose -p llm-wiki up --build -d` 실행 (컨테이너 무중단 교체)
+3. **Health Check**: `http://localhost:8000/api/health` 및 프론트엔드 포트(3000) 헬스체크 자동 수행
+4. **Post Actions**: 워크스페이스 자동 정리(`cleanWs`) 및 완료 로그 출력
+
+---
+
+### 옵션 B: ☁️ GitHub Actions CI/CD 파이프라인
 
 리포지토리([github.com/k71style/llm-wiki-web](https://github.com/k71style/llm-wiki-web))에 코드를 푸시하면 자동으로 테스트 및 배포가 진행됩니다.
 
-### 1) 파이프라인 구성
+#### 1) 파이프라인 구성
 - **CI 파이프라인 ([.github/workflows/ci.yml](../.github/workflows/ci.yml))**:
   - `main` 브랜치에 Push 또는 PR 발생 시 구동.
   - 백엔드 `pytest` 테스트 (검색, 마크다운 파서, API 엔드포인트) 자동 검증.
@@ -120,7 +148,7 @@ docker compose down
   - GitHub Container Registry(GHCR)에 프론트엔드/백엔드 최신 Docker 이미지 빌드 및 Push.
   - GitHub Repository Secrets에 SSH 정보가 등록되어 있다면 대상 서버에 원격 접속하여 `docker compose pull && docker compose up -d`를 자동 실행.
 
-### 2) 자동 배포를 위한 GitHub Secrets 설정 (선택 사항)
+#### 2) 자동 배포를 위한 GitHub Secrets 설정 (선택 사항)
 GitHub 저장소 `Settings -> Secrets and variables -> Actions`에서 다음 Secret을 등록하면 서버 자동 배포가 활성화됩니다:
 - `SERVER_HOST`: 서버 공인 IP 또는 도메인
 - `SERVER_USER`: SSH 접속 계정 (예: `ubuntu`, `root`)
