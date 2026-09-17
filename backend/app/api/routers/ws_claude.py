@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from backend.app.services.topic_service import topic_service
 from backend.app.services.claude_pty import claude_pty_manager
+from backend.app.security.jwt_auth import authenticate_websocket
 
 logger = logging.getLogger("llm_wiki.ws_claude")
 
@@ -10,6 +11,16 @@ router = APIRouter(tags=["claude_ws"])
 
 @router.websocket("/ws/topics/{topic_id}/claude")
 async def websocket_claude_session(websocket: WebSocket, topic_id: str):
+    user = await authenticate_websocket(websocket)
+    if not user:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": "인증되지 않은 연결입니다. 로그인 후 다시 시도해 주세요."
+        }))
+        await websocket.close(code=4001)
+        return
+
     await websocket.accept()
     
     topic = await topic_service.get_topic(topic_id)

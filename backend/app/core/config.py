@@ -22,10 +22,28 @@ class Settings(BaseSettings):
     DATABASE_PATH: Path = DATA_DIR / ".system" / "llm_wiki.db"
     
     # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "https://k71style.xyz",
+        "https://wiki.k71style.xyz",
+        "http://k71style.xyz",
+        "http://wiki.k71style.xyz"
+    ]
     
     # Claude Code CLI
     CLAUDE_CLI_PATH: str = os.getenv("CLAUDE_CLI_PATH", "claude")
+    
+    # JWT SSO Authentication (Integrated with zzooni4 / k71style.xyz)
+    AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
+    JWT_SECRET_KEY: str = os.getenv(
+        "JWT_SECRET",
+        "c2VjcmV0LWtleS16em9vbmk0LXNwcmluZy1ib290LWp3dC10b2tlbi1zZWNyZXQta2V5LXp6b29uaTQtc3ByaW5nLWJvb3Qtand0LXRva2VuLXNlY3JldC1rZXk="
+    )
+    JWT_ALGORITHM: str = "HS256"
+    SSO_LOGIN_URL: str = os.getenv("SSO_LOGIN_URL", "https://k71style.xyz/login?redirect=https://wiki.k71style.xyz")
+    SSO_LOGOUT_URL: str = os.getenv("SSO_LOGOUT_URL", "https://k71style.xyz")
     
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

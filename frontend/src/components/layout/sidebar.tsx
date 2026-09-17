@@ -16,8 +16,13 @@ import {
   RefreshCw,
   FolderPlus,
   X,
+  User,
+  LogOut,
+  Shield,
+  ShieldCheck,
 } from "lucide-react";
 import { TopicInfo, TopicTreeItem } from "@/types";
+import { useAuth } from "@/contexts/auth-context";
 
 interface SidebarProps {
   topics: TopicInfo[];
@@ -54,6 +59,7 @@ export function Sidebar({
   isMobileOpen = false,
   onCloseMobile,
 }: SidebarProps) {
+  const { user, login, logout } = useAuth();
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({
     concepts: true,
     sources: true,
@@ -287,26 +293,70 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Footer / Info */}
-      {currentTopic && (
-        <div className="p-2.5 border-t border-border bg-card/50 text-xs flex items-center justify-between text-muted-foreground">
-          <div className="truncate flex-1">
-            <span className="font-semibold text-foreground">{currentTopic.page_count}</span>개 문서
+      {/* Footer / Topic Info & User Profile */}
+      <div className="border-t border-border bg-card/60 divide-y divide-border/60">
+        {currentTopic && (
+          <div className="p-2.5 text-xs flex items-center justify-between text-muted-foreground">
+            <div className="truncate flex-1">
+              <span className="font-semibold text-foreground">{currentTopic.page_count}</span>개 문서
+            </div>
+            <button
+              onClick={() => {
+                if (confirm(`'${currentTopic.title}' 주제 저장소를 삭제하시겠습니까?`)) {
+                  onDeleteTopic(currentTopic.id);
+                  if (onCloseMobile) onCloseMobile();
+                }
+              }}
+              title="저장소 삭제"
+              className="p-1 hover:text-destructive transition rounded"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button
-            onClick={() => {
-              if (confirm(`'${currentTopic.title}' 주제 저장소를 삭제하시겠습니까?`)) {
-                onDeleteTopic(currentTopic.id);
-                if (onCloseMobile) onCloseMobile();
-              }
-            }}
-            title="저장소 삭제"
-            className="p-1 hover:text-destructive transition rounded"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+        )}
+
+        {/* User Auth Profile Card */}
+        <div className="p-2.5 flex items-center justify-between gap-2">
+          {user ? (
+            <>
+              <div className="flex items-center gap-2 truncate flex-1">
+                <div className="w-7 h-7 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                  <User className="w-3.5 h-3.5" />
+                </div>
+                <div className="truncate flex flex-col">
+                  <span className="text-xs font-semibold text-foreground truncate">{user.username}</span>
+                  <div className="flex items-center gap-1">
+                    {user.isAdmin ? (
+                      <span className="text-[10px] px-1 py-0.2 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded font-medium">
+                        ADMIN
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-1 py-0.2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-medium">
+                        USER
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={logout}
+                title="로그아웃"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition shrink-0"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={login}
+              className="w-full py-1.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>k71style.xyz 로그인</span>
+            </button>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 

@@ -1,14 +1,15 @@
 import json
 from collections import defaultdict
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from backend.app.db.database import db
 from backend.app.models.schemas import KnowledgeGraphData, GraphNode, GraphLink
 from backend.app.services.topic_service import topic_service
+from backend.app.security.jwt_auth import User, get_current_user
 
 router = APIRouter(prefix="/topics/{topic_id}/graph", tags=["graph"])
 
 @router.get("", response_model=KnowledgeGraphData)
-async def get_knowledge_graph(topic_id: str):
+async def get_knowledge_graph(topic_id: str, user: User = Depends(get_current_user)):
     topic = await topic_service.get_topic(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")

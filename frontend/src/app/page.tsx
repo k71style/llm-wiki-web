@@ -18,7 +18,8 @@ import { WikiEditor } from "@/components/wiki/wiki-editor";
 import { BacklinksPanel } from "@/components/wiki/backlinks-panel";
 import { CreateTopicDialog } from "@/components/topic/create-topic-dialog";
 import { SearchDialog } from "@/components/search/search-dialog";
-import { BookOpen, Menu, Search, Plus, Network, Terminal } from "lucide-react";
+import { BookOpen, Menu, Search, Plus, Network, Terminal, User as UserIcon } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 // Client-only dynamic imports for canvas / terminal / markdown rendering
 const WikiViewer = dynamic(
@@ -37,6 +38,7 @@ const ClaudeHybridView = dynamic(
 );
 
 export default function Home() {
+  const { user } = useAuth();
   const [topics, setTopics] = useState<TopicInfo[]>([]);
   const [currentTopic, setCurrentTopic] = useState<TopicInfo | null>(null);
   const [tree, setTree] = useState<TopicTreeItem[]>([]);
@@ -259,6 +261,12 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-1">
+          {user && (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary/80 border border-border text-[11px] text-foreground font-medium">
+              <UserIcon className="w-3 h-3 text-indigo-400" />
+              <span className="truncate max-w-[60px]">{user.username}</span>
+            </div>
+          )}
           <button
             onClick={() => handleOpenCreatePage()}
             className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition"

@@ -8,6 +8,24 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 
+export function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("jwtToken");
+}
+
+export function setStoredToken(token: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("jwtToken", token);
+  // Also set cookie if not already set
+  document.cookie = `jwtToken=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
+}
+
+export function clearStoredToken() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("jwtToken");
+  document.cookie = "jwtToken=; path=/; max-age=0";
+}
+
 export function getWebSocketUrl(path: string): string {
   if (typeof window === "undefined") {
     return `ws://127.0.0.1:8000${path}`;
@@ -15,19 +33,60 @@ export function getWebSocketUrl(path: string): string {
   const isHttps = window.location.protocol === "https:";
   const wsProtocol = isHttps ? "wss:" : "ws:";
   
+  const token = getStoredToken();
+  const separator = path.includes("?") ? "&" : "?";
+  const authQuery = token ? `${separator}token=${encodeURIComponent(token)}` : "";
+  
   // In local dev without reverse proxy on port 3000
   if (window.location.port === "3000") {
-    return `${wsProtocol}//${window.location.hostname}:8000${path}`;
+    return `${wsProtocol}//${window.location.hostname}:8000${path}${authQuery}`;
   }
   
   // In production (e.g. wiki.k71style.xyz)
-  return `${wsProtocol}//${window.location.host}${path}`;
+  return `${wsProtocol}//${window.location.host}${path}${authQuery}`;
+}
+
+async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const token = getStoredToken();
+  const headers = new Headers(options.headers || {});
+  
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  
+  const res = await fetch(url, {
+    ...options,
+    headers,
+    credentials: "include", // Pass cookies (jwtToken) across requests
+  });
+  
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+    const err = await res.json().catch(() => ({ detail: "Request failed" }));
+    throw new Error(err.detail || `Request failed with status ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+export interface AuthMeResponse {
+  authenticated: boolean;
+  user: {
+    username: string;
+    roles: string[];
+    isAdmin: boolean;
+  } | null;
+  loginUrl: string;
+}
+
+export async function fetchAuthMe(): Promise<AuthMeResponse> {
+  return apiFetch<AuthMeResponse>(`${API_BASE}/auth/me`, { cache: "no-store" });
 }
 
 export async function fetchTopics(): Promise<TopicInfo[]> {
-  const res = await fetch(`${API_BASE}/topics`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to fetch topics");
-  return res.json();
+  return apiFetch<TopicInfo[]>(`${API_BASE}/topics`, { cache: "no-store" });
 }
 
 export async function createTopic(data: {
@@ -36,37 +95,27 @@ export async function createTopic(data: {
   description?: string;
   system_prompt?: string;
 }): Promise<TopicInfo> {
-  const res = await fetch(`${API_BASE}/topics`, {
+  return apiFetch<TopicInfo>(`${API_BASE}/topics`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Failed to create topic");
-  }
-  return res.json();
 }
 
 export async function deleteTopic(topicId: string, deleteFiles: boolean = false): Promise<void> {
-  const res = await fetch(`${API_BASE}/topics/${topicId}?delete_files=${deleteFiles}`, {
+  return apiFetch<void>(`${API_BASE}/topics/${topicId}?delete_files=${deleteFiles}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error("Failed to delete topic");
 }
 
 export async function fetchTopicTree(topicId: string): Promise<TopicTreeItem[]> {
-  const res = await fetch(`${API_BASE}/topics/${topicId}/tree`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to fetch topic tree");
-  return res.json();
+  return apiFetch<TopicTreeItem[]>(`${API_BASE}/topics/${topicId}/tree`, { cache: "no-store" });
 }
 
 export async function fetchPage(topicId: string, path: string): Promise<PageDetail> {
-  const res = await fetch(`${API_BASE}/topics/${topicId}/pages?path=${encodeURIComponent(path)}`, {
+  return apiFetch<PageDetail>(`${API_BASE}/topics/${topicId}/pages?path=${encodeURIComponent(path)}`, {
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Failed to fetch page ${path}`);
-  return res.json();
 }
 
 export async function savePage(
@@ -74,23 +123,17 @@ export async function savePage(
   path: string,
   content: string
 ): Promise<PageDetail> {
-  const res = await fetch(`${API_BASE}/topics/${topicId}/pages?path=${encodeURIComponent(path)}`, {
+  return apiFetch<PageDetail>(`${API_BASE}/topics/${topicId}/pages?path=${encodeURIComponent(path)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Failed to save page");
-  }
-  return res.json();
 }
 
 export async function deletePage(topicId: string, path: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/topics/${topicId}/pages?path=${encodeURIComponent(path)}`, {
+  return apiFetch<void>(`${API_BASE}/topics/${topicId}/pages?path=${encodeURIComponent(path)}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(`Failed to delete page ${path}`);
 }
 
 export async function searchPages(
@@ -98,16 +141,12 @@ export async function searchPages(
   query: string,
   mode: "hybrid" | "keyword" | "semantic" = "hybrid"
 ): Promise<SearchResultItem[]> {
-  const res = await fetch(
+  return apiFetch<SearchResultItem[]>(
     `${API_BASE}/topics/${topicId}/search?q=${encodeURIComponent(query)}&mode=${mode}`,
     { cache: "no-store" }
   );
-  if (!res.ok) throw new Error("Search request failed");
-  return res.json();
 }
 
 export async function fetchKnowledgeGraph(topicId: string): Promise<KnowledgeGraphData> {
-  const res = await fetch(`${API_BASE}/topics/${topicId}/graph`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to fetch knowledge graph");
-  return res.json();
+  return apiFetch<KnowledgeGraphData>(`${API_BASE}/topics/${topicId}/graph`, { cache: "no-store" });
 }
