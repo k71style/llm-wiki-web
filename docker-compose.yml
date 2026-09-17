@@ -1,0 +1,38 @@
+﻿version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: llm-wiki-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_WIKI_DATA_DIR=/app/data/wikis
+      - CLAUDE_CLI_PATH=claude
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./data/wikis:/app/data/wikis
+    networks:
+      - llm-wiki-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: llm-wiki-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - llm-wiki-net
+
+networks:
+  llm-wiki-net:
+    driver: bridge

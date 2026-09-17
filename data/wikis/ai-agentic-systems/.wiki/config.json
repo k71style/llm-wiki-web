@@ -1,0 +1,7 @@
+{
+  "id": "eecb4a27-50bb-47b4-b109-f529daad8060",
+  "name": "ai-agentic-systems",
+  "title": "AI Agentic Systems & LLM Wiki",
+  "description": "자율형 AI 에이전트, RAG, 지식 그래프 및 MCP 아키텍처 연구 위키 저장소",
+  "system_prompt": "Always create structured markdown pages with KaTeX math and Mermaid diagrams."
+}

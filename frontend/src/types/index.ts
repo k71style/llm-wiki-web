@@ -1,0 +1,73 @@
+export interface TopicInfo {
+  id: string;
+  name: string;
+  title: string;
+  description?: string;
+  path: string;
+  page_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TopicTreeItem {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  title?: string;
+  size?: number;
+  children?: TopicTreeItem[];
+}
+
+export interface BacklinkItem {
+  source_page_id: string;
+  source_path: string;
+  source_title: string;
+  context_snippet?: string;
+}
+
+export interface PageDetail {
+  id: string;
+  topic_id: string;
+  path: string;
+  title: string;
+  tags: string[];
+  frontmatter: Record<string, any>;
+  content: string;
+  raw_content: string;
+  outgoing_links: string[];
+  incoming_links: BacklinkItem[];
+  created_at?: string;
+  updated_at?: string;
+  word_count: number;
+}
+
+export interface SearchResultItem {
+  page_id: string;
+  topic_id: string;
+  path: string;
+  title: string;
+  snippet: string;
+  score: number;
+  match_type: "keyword" | "semantic" | "hybrid";
+  tags: string[];
+}
+
+export interface GraphNode {
+  id: string;
+  title: string;
+  path: string;
+  group: number;
+  val: number;
+  tags: string[];
+}
+
+export interface GraphLink {
+  source: string;
+  target: string;
+  label?: string;
+}
+
+export interface KnowledgeGraphData {
+  nodes: GraphNode[];
+  links: GraphLink[];
+}
