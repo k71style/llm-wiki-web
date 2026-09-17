@@ -41,7 +41,7 @@ class Settings(BaseSettings):
         "JWT_SECRET",
         "c2VjcmV0LWtleS16em9vbmk0LXNwcmluZy1ib290LWp3dC10b2tlbi1zZWNyZXQta2V5LXp6b29uaTQtc3ByaW5nLWJvb3Qtand0LXRva2VuLXNlY3JldC1rZXk="
     )
-    JWT_ALGORITHM: str = "HS256"
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS512")
     SSO_LOGIN_URL: str = os.getenv("SSO_LOGIN_URL", "https://k71style.xyz/login?redirect=https://wiki.k71style.xyz")
     SSO_LOGOUT_URL: str = os.getenv("SSO_LOGOUT_URL", "https://k71style.xyz")
     

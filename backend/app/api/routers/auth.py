@@ -52,6 +52,7 @@ async def sso_logout(response: Response):
     """
     Clears local jwtToken cookie and redirects to SSO logout / main site.
     """
+    response.delete_cookie(key="jwtToken", path="/", domain="k71style.xyz")
     response.delete_cookie(key="jwtToken", path="/", domain=".k71style.xyz")
     response.delete_cookie(key="jwtToken", path="/")
     return RedirectResponse(url=settings.SSO_LOGOUT_URL)

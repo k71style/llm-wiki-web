@@ -23,7 +23,7 @@ def decode_token(token: str) -> Optional[dict]:
         payload = jwt.decode(
             token,
             secret_bytes,
-            algorithms=[settings.JWT_ALGORITHM],
+            algorithms=["HS512", "HS256", settings.JWT_ALGORITHM],
             options={"verify_exp": True}
         )
         return payload
@@ -78,7 +78,7 @@ def extract_user_from_token(token: str) -> Optional[User]:
     else:
         roles = ["ROLE_USER"]
 
-    is_admin = "ROLE_ADMIN" in roles or username.lower() == "admin"
+    is_admin = "ROLE_ADMIN" in roles or "ADMIN" in roles or username.lower() == "admin"
 
     return User(
         username=username,

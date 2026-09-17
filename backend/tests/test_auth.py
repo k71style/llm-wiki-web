@@ -8,14 +8,14 @@ from backend.app.security.jwt_auth import decode_token, extract_user_from_token
 
 SECRET = settings.JWT_SECRET_KEY
 
-def create_test_jwt(username="snoopy", roles="ROLE_USER,ROLE_ADMIN", expired=False):
+def create_test_jwt(username="snoopy", roles="ROLE_USER,ROLE_ADMIN", expired=False, algorithm="HS512"):
     exp = int(time.time()) - 3600 if expired else int(time.time()) + 3600
     payload = {
         "sub": username,
         "auth": roles,
         "exp": exp
     }
-    return jwt.encode(payload, SECRET.encode("utf-8"), algorithm="HS256")
+    return jwt.encode(payload, SECRET.encode("utf-8"), algorithm=algorithm)
 
 def test_jwt_decode_and_roles():
     # Valid token
