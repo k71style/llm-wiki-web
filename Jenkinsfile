@@ -114,8 +114,11 @@ pipeline {
                             # Nginx 컨테이너에 설정 파일 복사 및 reload
                             if docker ps --format '{{.Names}}' | grep -q "zzooni4-nginx"; then
                                 echo "Updating zzooni4-nginx configuration..."
+                                sed -i 's/\r$//' nginx/wiki.k71style.xyz.conf || true
+                                sed -i '1s/^\xEF\xBB\xBF//' nginx/wiki.k71style.xyz.conf || true
                                 docker cp nginx/wiki.k71style.xyz.conf zzooni4-nginx:/etc/nginx/conf.d/wiki.conf
-                                docker exec zzooni4-nginx nginx -t && docker exec zzooni4-nginx nginx -s reload
+                                docker exec zzooni4-nginx nginx -t
+                                docker exec zzooni4-nginx nginx -s reload
                                 echo "Nginx reloaded successfully!"
                             fi
                         fi
