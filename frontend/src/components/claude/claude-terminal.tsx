@@ -25,7 +25,7 @@ export function ClaudeTerminal({ topic }: ClaudeTerminalProps) {
       wsRef.current.close();
     }
 
-    const wsUrl = getWebSocketUrl(`/ws/topics/${topic.id}/claude`);
+    const wsUrl = getWebSocketUrl(`/ws/topics/${topic.id}/claude?mode=terminal`);
     setStatus("connecting");
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;

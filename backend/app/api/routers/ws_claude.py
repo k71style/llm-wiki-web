@@ -77,7 +77,12 @@ async def websocket_claude_session(websocket: WebSocket, topic_id: str):
         except Exception:
             pass
 
-    session = claude_pty_manager.get_or_create_session(topic.id, topic.path, send_output)
+    mode = websocket.query_params.get("mode", "chat")
+
+    if mode == "terminal":
+        session = claude_pty_manager.get_or_create_terminal_session(topic.id, topic.path, send_output)
+    else:
+        session = claude_pty_manager.get_or_create_chat_session(topic.id, topic.path, send_output)
 
     try:
         while True:
@@ -144,8 +149,11 @@ async def websocket_claude_session(websocket: WebSocket, topic_id: str):
                 await session.write_input(raw_msg)
                 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket client disconnected from Claude session: {topic_id}")
+        logger.info(f"WebSocket client disconnected from Claude session: {topic_id} (mode={mode})")
     except Exception as e:
         logger.error(f"Error in Claude WebSocket session: {e}", exc_info=True)
-
-        logger.error(f"Error in Claude WebSocket session: {e}")
+    finally:
+        if mode == "terminal":
+            await claude_pty_manager.close_terminal_session(topic.id)
+        else:
+            await claude_pty_manager.close_chat_session(topic.id)

@@ -248,20 +248,43 @@ class ClaudeSession:
 
 class ClaudePTYManager:
     def __init__(self):
-        self.sessions: Dict[str, ClaudeSession] = {}
+        self.terminal_sessions: Dict[str, ClaudeSession] = {}
+        self.chat_sessions: Dict[str, ClaudeSession] = {}
 
-    def get_or_create_session(self, topic_id: str, topic_path: str, output_callback: Callable[[str], None]) -> ClaudeSession:
-        if topic_id in self.sessions and self.sessions[topic_id]._is_running:
-            self.sessions[topic_id].output_callback = output_callback
-            return self.sessions[topic_id]
+    def get_or_create_terminal_session(self, topic_id: str, topic_path: str, output_callback: Callable[[str], None]) -> ClaudeSession:
+        """Gets existing running terminal PTY session or creates a new one."""
+        if topic_id in self.terminal_sessions and self.terminal_sessions[topic_id]._is_running:
+            self.terminal_sessions[topic_id].output_callback = output_callback
+            return self.terminal_sessions[topic_id]
         
         session = ClaudeSession(topic_id, topic_path, output_callback)
-        self.sessions[topic_id] = session
+        self.terminal_sessions[topic_id] = session
         return session
 
+    def get_or_create_chat_session(self, topic_id: str, topic_path: str, output_callback: Callable[[str], None]) -> ClaudeSession:
+        """Creates an isolated session specifically for chat mode prompts."""
+        session = ClaudeSession(topic_id, topic_path, output_callback)
+        self.chat_sessions[topic_id] = session
+        return session
+
+    async def close_terminal_session(self, topic_id: str):
+        """Stops and cleans up the interactive terminal PTY process."""
+        if topic_id in self.terminal_sessions:
+            session = self.terminal_sessions.pop(topic_id)
+            await session.stop()
+            logger.info("Closed terminal PTY session for topic: %s", topic_id)
+
+    async def close_chat_session(self, topic_id: str):
+        """Stops any active chat prompt session."""
+        if topic_id in self.chat_sessions:
+            session = self.chat_sessions.pop(topic_id)
+            await session.stop()
+
+    def get_or_create_session(self, topic_id: str, topic_path: str, output_callback: Callable[[str], None]) -> ClaudeSession:
+        return self.get_or_create_terminal_session(topic_id, topic_path, output_callback)
+
     async def close_session(self, topic_id: str):
-        if topic_id in self.sessions:
-            await self.sessions[topic_id].stop()
-            del self.sessions[topic_id]
+        await self.close_terminal_session(topic_id)
+        await self.close_chat_session(topic_id)
 
 claude_pty_manager = ClaudePTYManager()

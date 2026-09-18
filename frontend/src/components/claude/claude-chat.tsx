@@ -69,7 +69,7 @@ export function ClaudeChat({ topic, onSwitchToTerminal }: ClaudeChatProps) {
   }, [topic.id]);
 
   useEffect(() => {
-    const wsUrl = getWebSocketUrl(`/ws/topics/${topic.id}/claude`);
+    const wsUrl = getWebSocketUrl(`/ws/topics/${topic.id}/claude?mode=chat`);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -79,7 +79,11 @@ export function ClaudeChat({ topic, onSwitchToTerminal }: ClaudeChatProps) {
         if (msg.type === "start_stream") {
           setIsGenerating(true);
         } else if (msg.type === "output" && msg.data) {
-          const cleanText = msg.data.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+          const cleanText = msg.data
+            .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")
+            .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, "")
+            .replace(/\[\?[0-9;]*[a-zA-Z]/g, "")
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
           if (cleanText) {
             setMessages((prev) => {
               const lastMsg = prev[prev.length - 1];
