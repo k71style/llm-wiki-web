@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   GitBranch,
   Download,
+  Upload,
 } from "lucide-react";
 import { TopicInfo, TopicTreeItem } from "@/types";
 import { useAuth } from "@/contexts/auth-context";
@@ -36,6 +37,7 @@ interface SidebarProps {
   onSelectPage: (path: string) => void;
   onOpenCreateTopic: () => void;
   onOpenCreatePage: (parentDir?: string) => void;
+  onOpenUpload?: () => void;
   onOpenSearch: () => void;
   onRefresh: () => void;
   onDeleteTopic: (topicId: string) => void;
@@ -54,6 +56,7 @@ export function Sidebar({
   onSelectPage,
   onOpenCreateTopic,
   onOpenCreatePage,
+  onOpenUpload,
   onOpenSearch,
   onRefresh,
   onDeleteTopic,
@@ -286,10 +289,19 @@ export function Sidebar({
         <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
           <span>문서 탐색기</span>
           <div className="flex items-center gap-1">
+            {onOpenUpload && currentTopic && (
+              <button
+                onClick={onOpenUpload}
+                title="저장소에 파일 직접 올리기"
+                className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               onClick={onRefresh}
               title="동기화 및 새로고침"
-              className="p-1 hover:text-foreground rounded"
+              className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3 h-3" />
             </button>
@@ -299,7 +311,7 @@ export function Sidebar({
                 if (onCloseMobile) onCloseMobile();
               }}
               title="새 마크다운 문서 생성"
-              className="p-1 hover:text-foreground rounded"
+              className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>

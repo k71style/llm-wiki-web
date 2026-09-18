@@ -165,3 +165,54 @@ export async function searchPages(
 export async function fetchKnowledgeGraph(topicId: string): Promise<KnowledgeGraphData> {
   return apiFetch<KnowledgeGraphData>(`${API_BASE}/topics/${topicId}/graph`, { cache: "no-store" });
 }
+
+export interface UploadResultItem {
+  filename: string;
+  path: string;
+  size: number;
+  is_markdown: boolean;
+  asset_url: string | null;
+  markdown_link: string;
+}
+
+export interface UploadResponse {
+  success: boolean;
+  uploaded: UploadResultItem[];
+  errors: { filename: string; error: string }[];
+  message: string;
+}
+
+export async function uploadTopicFiles(
+  topicId: string,
+  files: File[],
+  targetDir: string = "assets",
+  overwrite: boolean = true
+): Promise<UploadResponse> {
+  const token = getStoredToken();
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append("files", file);
+  });
+  formData.append("target_dir", targetDir);
+  formData.append("overwrite", String(overwrite));
+
+  const res = await fetch(`${API_BASE}/topics/${topicId}/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Upload failed: ${res.statusText}`);
+  }
+
+  return res.json();
+}
+

@@ -9,7 +9,7 @@ from backend.app.db.database import db
 from backend.app.services.watcher_service import watcher_service
 from backend.app.services.topic_service import topic_service
 
-from backend.app.api.routers import topics, pages, search, graph, mcp, ws_claude, ws_events, auth
+from backend.app.api.routers import topics, pages, search, graph, mcp, ws_claude, ws_events, auth, upload
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,6 +65,7 @@ app.include_router(pages.router, prefix=settings.API_V1_STR)
 app.include_router(search.router, prefix=settings.API_V1_STR)
 app.include_router(graph.router, prefix=settings.API_V1_STR)
 app.include_router(mcp.router, prefix=settings.API_V1_STR)
+app.include_router(upload.router, prefix=settings.API_V1_STR)
 
 # WebSockets
 app.include_router(ws_claude.router)

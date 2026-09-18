@@ -685,4 +685,58 @@ class TopicService:
             file_path.unlink()
         await self.sync_topic(topic_id)
 
+    async def save_uploaded_file(
+        self,
+        topic_id: str,
+        filename: str,
+        file_bytes: bytes,
+        target_dir: str = "assets",
+        overwrite: bool = True
+    ) -> dict:
+        """Saves an uploaded file to the topic directory and indexes markdown if applicable."""
+        topic = await self.get_topic(topic_id)
+        if not topic:
+            raise ValueError(f"Topic '{topic_id}' not found.")
+
+        # Sanitize filename (prevent directory traversal)
+        safe_name = Path(filename).name
+        if not safe_name or safe_name in (".", ".."):
+            raise ValueError("유효하지 않은 파일명입니다.")
+
+        # Sanitize target_dir (prevent directory traversal)
+        clean_dir = target_dir.strip().strip("/").strip("\\")
+        if ".." in clean_dir:
+            clean_dir = "assets"
+        if not clean_dir:
+            clean_dir = "assets"
+
+        topic_path = Path(topic.path)
+        dest_dir = topic_path / clean_dir
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_path = dest_dir / safe_name
+        if dest_path.exists() and not overwrite:
+            raise ValueError(f"파일 '{safe_name}'이(가) 이미 존재합니다.")
+
+        with open(dest_path, "wb") as f:
+            f.write(file_bytes)
+
+        rel_path = f"{clean_dir}/{safe_name}"
+
+        # If it's a markdown file, trigger re-sync
+        is_md = safe_name.lower().endswith((".md", ".markdown"))
+        if is_md:
+            await self.sync_topic(topic_id)
+
+        is_image = safe_name.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))
+
+        return {
+            "filename": safe_name,
+            "path": rel_path,
+            "size": len(file_bytes),
+            "is_markdown": is_md,
+            "asset_url": f"/api/topics/{topic_id}/assets/{safe_name}" if clean_dir == "assets" else None,
+            "markdown_link": f"![{safe_name}](assets/{safe_name})" if is_image else f"[[{rel_path}]]"
+        }
+
 topic_service = TopicService()

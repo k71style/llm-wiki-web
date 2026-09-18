@@ -17,6 +17,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { WikiEditor } from "@/components/wiki/wiki-editor";
 import { BacklinksPanel } from "@/components/wiki/backlinks-panel";
 import { CreateTopicDialog } from "@/components/topic/create-topic-dialog";
+import { UploadFileDialog } from "@/components/topic/upload-file-dialog";
 import { SearchDialog } from "@/components/search/search-dialog";
 import { BookOpen, Menu, Search, Plus, Network, Terminal, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -49,6 +50,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"wiki" | "graph" | "claude">("wiki");
   const [isEditing, setIsEditing] = useState(false);
   const [isCreateTopicOpen, setIsCreateTopicOpen] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -294,6 +296,7 @@ export default function Home() {
         onSelectPage={handleSelectPage}
         onOpenCreateTopic={() => setIsCreateTopicOpen(true)}
         onOpenCreatePage={handleOpenCreatePage}
+        onOpenUpload={() => setIsUploadOpen(true)}
         onOpenSearch={() => setIsSearchOpen(true)}
         onRefresh={loadTopicContents}
         onDeleteTopic={handleDeleteTopic}
@@ -421,6 +424,19 @@ export default function Home() {
         onClose={() => setIsSearchOpen(false)}
         onSelectResult={handleSelectPage}
       />
+
+      {currentTopic && (
+        <UploadFileDialog
+          isOpen={isUploadOpen}
+          topicId={currentTopic.id}
+          topicTitle={currentTopic.title}
+          onClose={() => setIsUploadOpen(false)}
+          onUploaded={() => {
+            fetchTopicTree(currentTopic.id).then(setTree);
+            fetchKnowledgeGraph(currentTopic.id).then(setGraphData);
+          }}
+        />
+      )}
     </div>
   );
 }
