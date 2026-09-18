@@ -33,6 +33,13 @@ export function ClaudeTerminal({ topic }: ClaudeTerminalProps) {
     ws.onopen = () => {
       setStatus("connected");
       xtermRef.current?.writeln("\x1b[32m[Connected to Claude Code CLI session]\x1b[0m");
+      if (xtermRef.current) {
+        ws.send(JSON.stringify({
+          type: "resize",
+          cols: xtermRef.current.cols,
+          rows: xtermRef.current.rows
+        }));
+      }
       // Auto-start CLI process
       ws.send(JSON.stringify({ type: "start" }));
       setIsRunning(true);
@@ -109,6 +116,13 @@ export function ClaudeTerminal({ topic }: ClaudeTerminalProps) {
     const handleResize = () => {
       try {
         fitAddon.fit();
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: "resize",
+            cols: term.cols,
+            rows: term.rows
+          }));
+        }
       } catch {}
     };
     window.addEventListener("resize", handleResize);

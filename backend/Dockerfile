@@ -1,4 +1,4 @@
-﻿FROM python:3.13-slim
+FROM python:3.13-slim
 
 # Install system dependencies, Node.js (for Claude Code CLI), and git
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -26,10 +26,12 @@ ENV PYTHONUNBUFFERED=1 \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     LLM_WIKI_DATA_DIR=/app/data/wikis \
-    CLAUDE_CLI_PATH=claude
+    CLAUDE_CLI_PATH=claude \
+    CLAUDE_CONFIG_DIR=/root/.claude \
+    HOME=/root
 
-# Create data directory
-RUN mkdir -p /app/data/wikis
+# Create data directory and claude config directory
+RUN mkdir -p /app/data/wikis /root/.claude
 
 EXPOSE 8000
 

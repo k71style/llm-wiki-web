@@ -18,6 +18,7 @@ class ClaudeSession:
         self.topic_path = topic_path
         self.output_callback = output_callback
         self.process: Optional[subprocess.Popen] = None
+        self.master_fd: Optional[int] = None
         self._reader_thread: Optional[threading.Thread] = None
         self._is_running = False
 
@@ -30,6 +31,18 @@ class ClaudeSession:
             or shutil.which(str(Path.home() / ".local" / "bin" / "claude.exe"))
             or cmd
         )
+
+    def set_window_size(self, rows: int, cols: int):
+        """Resizes the pseudo-terminal window."""
+        if sys.platform != "win32" and self.master_fd is not None:
+            try:
+                import fcntl
+                import termios
+                import struct
+                winsize = struct.pack("HHHH", max(1, rows), max(1, cols), 0, 0)
+                fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, winsize)
+            except Exception as e:
+                logger.debug(f"Could not resize PTY window: {e}")
 
     async def execute_prompt(self, prompt: str):
         """Executes a one-shot prompt with `claude -p` streaming stdout with robust UTF-8 incremental decoding."""
@@ -87,7 +100,7 @@ class ClaudeSession:
             await self.output_callback(item)
 
     async def start_interactive(self, custom_command: Optional[str] = None):
-        """Starts interactive Claude CLI process for xterm.js terminal."""
+        """Starts interactive Claude CLI process for xterm.js terminal with genuine TTY."""
         if self._is_running:
             return
 
@@ -101,37 +114,88 @@ class ClaudeSession:
         logger.info("Starting interactive Claude CLI in %s with command: %s", self.topic_path, executable)
 
         try:
-            self.process = subprocess.Popen(
-                [executable],
-                cwd=self.topic_path,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                env=env,
-                bufsize=0
-            )
-
-            self._is_running = True
             loop = asyncio.get_running_loop()
 
-            def _read_stdout():
-                decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-                try:
-                    while self._is_running and self.process and self.process.stdout:
-                        chunk = self.process.stdout.read(512)
-                        if not chunk:
-                            break
-                        text = decoder.decode(chunk)
-                        if text:
-                            asyncio.run_coroutine_threadsafe(self.output_callback(text), loop)
-                except Exception as e:
-                    logger.error("Error reading stdout: %s", e)
-                finally:
-                    self._is_running = False
-                    asyncio.run_coroutine_threadsafe(self.output_callback("\r\n\x1b[33m[Claude Code session ended]\x1b[0m\r\n"), loop)
+            if sys.platform != "win32":
+                import pty
+                master_fd, slave_fd = pty.openpty()
+                self.master_fd = master_fd
 
-            self._reader_thread = threading.Thread(target=_read_stdout, daemon=True)
-            self._reader_thread.start()
+                self.process = subprocess.Popen(
+                    [executable],
+                    cwd=self.topic_path,
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    env=env,
+                    close_fds=True,
+                    preexec_fn=os.setsid
+                )
+                os.close(slave_fd)
+
+                self._is_running = True
+
+                def _read_stdout_pty():
+                    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+                    try:
+                        while self._is_running and self.master_fd is not None:
+                            try:
+                                chunk = os.read(self.master_fd, 1024)
+                                if not chunk:
+                                    break
+                                text = decoder.decode(chunk)
+                                if text:
+                                    asyncio.run_coroutine_threadsafe(self.output_callback(text), loop)
+                            except OSError:
+                                # EIO means EOF on Linux PTY
+                                break
+                    except Exception as e:
+                        logger.error("Error reading PTY stdout: %s", e)
+                    finally:
+                        self._is_running = False
+                        if self.master_fd is not None:
+                            try:
+                                os.close(self.master_fd)
+                            except Exception:
+                                pass
+                            self.master_fd = None
+                        asyncio.run_coroutine_threadsafe(self.output_callback("\r\n\x1b[33m[Claude Code session ended]\x1b[0m\r\n"), loop)
+
+                self._reader_thread = threading.Thread(target=_read_stdout_pty, daemon=True)
+                self._reader_thread.start()
+
+            else:
+                # Windows fallback (pipe-based)
+                self.process = subprocess.Popen(
+                    [executable],
+                    cwd=self.topic_path,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    env=env,
+                    bufsize=0
+                )
+
+                self._is_running = True
+
+                def _read_stdout_pipe():
+                    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+                    try:
+                        while self._is_running and self.process and self.process.stdout:
+                            chunk = self.process.stdout.read(512)
+                            if not chunk:
+                                break
+                            text = decoder.decode(chunk)
+                            if text:
+                                asyncio.run_coroutine_threadsafe(self.output_callback(text), loop)
+                    except Exception as e:
+                        logger.error("Error reading stdout: %s", e)
+                    finally:
+                        self._is_running = False
+                        asyncio.run_coroutine_threadsafe(self.output_callback("\r\n\x1b[33m[Claude Code session ended]\x1b[0m\r\n"), loop)
+
+                self._reader_thread = threading.Thread(target=_read_stdout_pipe, daemon=True)
+                self._reader_thread.start()
 
         except Exception as e:
             logger.error("Failed to start interactive Claude process: %s", e, exc_info=True)
@@ -141,22 +205,43 @@ class ClaudeSession:
             self._is_running = False
 
     async def write_input(self, data: str):
-        if self._is_running and self.process and self.process.stdin:
-            try:
-                self.process.stdin.write(data.encode("utf-8"))
-                self.process.stdin.flush()
-            except Exception as e:
-                logger.error("Error writing to stdin: %s", e)
+        if self._is_running:
+            if self.master_fd is not None:
+                try:
+                    os.write(self.master_fd, data.encode("utf-8"))
+                except Exception as e:
+                    logger.error("Error writing to PTY: %s", e)
+            elif self.process and self.process.stdin:
+                try:
+                    self.process.stdin.write(data.encode("utf-8"))
+                    self.process.stdin.flush()
+                except Exception as e:
+                    logger.error("Error writing to stdin: %s", e)
 
     async def stop(self):
         self._is_running = False
+        if self.master_fd is not None:
+            try:
+                os.close(self.master_fd)
+            except Exception:
+                pass
+            self.master_fd = None
+
         if self.process:
             try:
-                self.process.terminate()
+                if sys.platform != "win32":
+                    import signal
+                    os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
+                else:
+                    self.process.terminate()
                 self.process.wait(timeout=2.0)
             except Exception:
                 try:
-                    self.process.kill()
+                    if sys.platform != "win32":
+                        import signal
+                        os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
+                    else:
+                        self.process.kill()
                 except Exception:
                     pass
         self.process = None

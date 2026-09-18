@@ -1,4 +1,4 @@
-﻿version: '3.8'
+version: '3.8'
 
 services:
   backend:
@@ -15,6 +15,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ./data/wikis:/app/data/wikis
+      - claude_config:/root/.claude
     networks:
       - llm-wiki-net
 
@@ -32,6 +33,10 @@ services:
       - backend
     networks:
       - llm-wiki-net
+
+volumes:
+  claude_config:
+    name: llm-wiki_claude_config
 
 networks:
   llm-wiki-net:

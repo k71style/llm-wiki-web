@@ -65,6 +65,11 @@ async def websocket_claude_session(websocket: WebSocket, topic_id: str):
                     data = msg.get("data", "")
                     await session.write_input(data)
                     
+                elif msg_type == "resize":
+                    cols = msg.get("cols", 80)
+                    rows = msg.get("rows", 24)
+                    session.set_window_size(rows, cols)
+
                 elif msg_type == "stop":
                     await session.stop()
                     
