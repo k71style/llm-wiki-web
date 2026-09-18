@@ -28,6 +28,11 @@
    - **하이브리드 뷰**: 깔끔한 대화형 메신저 채팅 UI ↔ `xterm.js` 풀 컬러 가상 터미널 모드 원클릭 전환
    - **내장 MCP(Model Context Protocol) 서버**: Claude Code CLI가 `search_wiki`, `read_wiki_page`, `write_wiki_page`, `get_backlinks` 도구를 자율적으로 호출하여 위키 지식 생성 및 수정
 
+6. **외부 Git 저장소 Clone 임포트 & 원격 동기화 (Git Pull)**
+   - GitHub, GitLab, GitHub Wiki 등 원격 Markdown 저장소 URL을 통한 신규 토픽 원클릭 복제
+   - 복제 즉시 SQLite FTS5 전문 검색 및 지식 그래프에 마크다운 문서 자동 색인
+   - 사이드바 내 원클릭 `Git Pull` 동기화 버튼으로 원격 변경사항 실시간 반영
+
 ---
 
 ## 🏗️ 아키텍처 (Architecture)
@@ -40,7 +45,7 @@ graph TD
     Claude["Claude Code CLI (Anthropic)"]
 
     Client <-->|REST API / WebSocket| Backend
-    Backend <-->|CRUD / FTS5 / Watchdog| Storage
+    Backend <-->|CRUD / FTS5 / Watchdog / Git| Storage
     Backend <-->|PTY Stdio / MCP JSON-RPC| Claude
 ```
 
@@ -89,3 +94,4 @@ Windows 환경에서는 루트 디렉토리의 배치 파일을 더블클릭하�
 - [docs/01_REQUIREMENTS_SPECIFICATION.md](docs/01_REQUIREMENTS_SPECIFICATION.md) : 요구사항 정의서
 - [docs/02_SYSTEM_ARCHITECTURE.md](docs/02_SYSTEM_ARCHITECTURE.md) : 시스템 아키텍처 설계서
 - [docs/03_DEPLOYMENT_GUIDE.md](docs/03_DEPLOYMENT_GUIDE.md) : 배포 및 운영 가이드 (Docker, Nginx SSL, wiki.k71style.xyz, CI/CD)
+- [docs/04_WORK_HISTORY.md](docs/04_WORK_HISTORY.md) : 프로젝트 작업 이력 및 개발 일지 (기능 구현, 아키텍처 결정, 개발 가이드)
