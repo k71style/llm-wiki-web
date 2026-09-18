@@ -13,6 +13,8 @@ async def get_knowledge_graph(topic_id: str, user: User = Depends(get_current_us
     topic = await topic_service.get_topic(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
+    if not topic_service.can_access_topic(topic, user):
+        raise HTTPException(status_code=403, detail="해당 위키에 대한 지식 그래프 접근 권한이 없습니다.")
 
     database = await db.get_db()
 

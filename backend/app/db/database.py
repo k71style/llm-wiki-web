@@ -14,6 +14,9 @@ TABLE_SCHEMAS = [
         title TEXT NOT NULL,
         description TEXT,
         path TEXT NOT NULL,
+        owner TEXT,
+        assigned_users TEXT DEFAULT '[]',
+        is_public INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -83,6 +86,18 @@ class Database:
                 await db_conn.execute(statement)
             except Exception as e:
                 logger.warning(f"Error executing schema statement: {e}")
+
+        # Safe schema migration for topics permissions
+        for col_def in [
+            "ALTER TABLE topics ADD COLUMN owner TEXT;",
+            "ALTER TABLE topics ADD COLUMN assigned_users TEXT DEFAULT '[]';",
+            "ALTER TABLE topics ADD COLUMN is_public INTEGER DEFAULT 0;"
+        ]:
+            try:
+                await db_conn.execute(col_def)
+            except Exception:
+                pass  # Column already exists
+
         await db_conn.commit()
         logger.info(f"Database initialized at {self.db_path}")
 

@@ -1,5 +1,6 @@
 import {
   TopicInfo,
+  TopicCreate,
   TopicGitImport,
   TopicTreeItem,
   PageDetail,
@@ -90,12 +91,7 @@ export async function fetchTopics(): Promise<TopicInfo[]> {
   return apiFetch<TopicInfo[]>(`${API_BASE}/topics`, { cache: "no-store" });
 }
 
-export async function createTopic(data: {
-  name: string;
-  title: string;
-  description?: string;
-  system_prompt?: string;
-}): Promise<TopicInfo> {
+export async function createTopic(data: TopicCreate): Promise<TopicInfo> {
   return apiFetch<TopicInfo>(`${API_BASE}/topics`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -216,3 +212,13 @@ export async function uploadTopicFiles(
   return res.json();
 }
 
+export async function updateTopicPermissions(
+  topicId: string,
+  data: { is_public: boolean; assigned_users: string[] }
+): Promise<TopicInfo> {
+  return apiFetch<TopicInfo>(`${API_BASE}/topics/${topicId}/permissions`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}

@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote
 
+from fastapi import HTTPException, UploadFile
 from backend.app.core.config import settings
 from backend.app.db.database import db
+from backend.app.security.jwt_auth import User
 from backend.app.models.schemas import (
     TopicCreate,
     TopicGitImport,
@@ -112,24 +114,44 @@ class TopicService:
     def _row_to_topic_info(self, row: Any) -> TopicInfo:
         path_str = row["path"]
         is_git, git_url = self._get_git_info(Path(path_str))
+
+        # Parse permissions
+        keys = row.keys() if hasattr(row, "keys") else []
+        owner = row["owner"] if "owner" in keys else None
+        
+        assigned_users = []
+        if "assigned_users" in keys and row["assigned_users"]:
+            try:
+                assigned_users = json.loads(row["assigned_users"])
+            except Exception:
+                assigned_users = []
+
+        is_public = bool(row["is_public"]) if "is_public" in keys and row["is_public"] else False
+
         return TopicInfo(
             id=row["id"],
             name=row["name"],
             title=row["title"],
             description=row["description"],
             path=path_str,
-            page_count=row["page_count"],
+            page_count=row["page_count"] if "page_count" in keys else 0,
             is_git_repo=is_git,
             git_url=git_url,
+            owner=owner,
+            assigned_users=assigned_users,
+            is_public=is_public,
             created_at=datetime.fromisoformat(row["created_at"]) if isinstance(row["created_at"], str) else row["created_at"],
             updated_at=datetime.fromisoformat(row["updated_at"]) if isinstance(row["updated_at"], str) else row["updated_at"],
         )
 
-    async def create_topic(self, topic_in: TopicCreate) -> TopicInfo:
+    async def create_topic(self, topic_in: TopicCreate, user: Optional[User] = None) -> TopicInfo:
         database = await db.get_db()
         topic_id = str(uuid.uuid4())
         topic_name = topic_in.name.strip().lower().replace(" ", "-")
         topic_dir = settings.DATA_DIR / topic_name
+        owner = user.username if user else "admin"
+        assigned_users = topic_in.assigned_users or []
+        is_public_val = 1 if topic_in.is_public else 0
         
         # Check if topic already exists in DB
         async with database.execute("SELECT id FROM topics WHERE name = ?", (topic_name,)) as cursor:
@@ -149,7 +171,10 @@ class TopicService:
             "name": topic_name,
             "title": topic_in.title,
             "description": topic_in.description or "",
-            "system_prompt": topic_in.system_prompt or ""
+            "system_prompt": topic_in.system_prompt or "",
+            "owner": owner,
+            "assigned_users": assigned_users,
+            "is_public": bool(is_public_val)
         }
         with open(topic_dir / ".wiki" / "config.json", "w", encoding="utf-8") as f:
             json.dump(config_data, f, indent=2, ensure_ascii=False)
@@ -184,10 +209,10 @@ class TopicService:
         now = datetime.now(timezone.utc).isoformat()
         await database.execute(
             """
-            INSERT INTO topics (id, name, title, description, path, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO topics (id, name, title, description, path, owner, assigned_users, is_public, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (topic_id, topic_name, topic_in.title, topic_in.description, str(topic_dir), now, now)
+            (topic_id, topic_name, topic_in.title, topic_in.description, str(topic_dir), owner, json.dumps(assigned_users), is_public_val, now, now)
         )
         await database.commit()
         
@@ -258,12 +283,15 @@ class TopicService:
             return f"SSL 인증서 검증 실패: 사내 사설 인증서인 경우 'SSL 검증 건너뛰기' 옵션을 활성화해 주세요.\n상세 에러: {msg.strip()}"
         return msg.strip()
 
-    async def import_from_git(self, git_in: TopicGitImport) -> TopicInfo:
+    async def import_from_git(self, git_in: TopicGitImport, user: Optional[User] = None) -> TopicInfo:
         """Clones a remote Git repository into a new topic directory and indexes it."""
         database = await db.get_db()
         topic_id = str(uuid.uuid4())
         topic_name = git_in.name.strip().lower().replace(" ", "-")
         topic_dir = settings.DATA_DIR / topic_name
+        owner = user.username if user else "admin"
+        assigned_users = git_in.assigned_users or []
+        is_public_val = 1 if git_in.is_public else 0
 
         # Check if topic name already exists in DB
         async with database.execute("SELECT id FROM topics WHERE name = ?", (topic_name,)) as cursor:
@@ -333,7 +361,10 @@ class TopicService:
                 "name": topic_name,
                 "title": git_in.title,
                 "description": git_in.description or "",
-                "git_url": git_in.git_url
+                "git_url": git_in.git_url,
+                "owner": owner,
+                "assigned_users": assigned_users,
+                "is_public": bool(is_public_val)
             }
             with open(config_file, "w", encoding="utf-8") as f:
                 json.dump(config_data, f, indent=2, ensure_ascii=False)
@@ -353,10 +384,10 @@ class TopicService:
         now = datetime.now(timezone.utc).isoformat()
         await database.execute(
             """
-            INSERT INTO topics (id, name, title, description, path, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO topics (id, name, title, description, path, owner, assigned_users, is_public, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (topic_id, topic_name, git_in.title, git_in.description, str(topic_dir), now, now)
+            (topic_id, topic_name, git_in.title, git_in.description, str(topic_dir), owner, json.dumps(assigned_users), is_public_val, now, now)
         )
         await database.commit()
 
@@ -407,10 +438,25 @@ class TopicService:
             "message": f"'{topic.title}' 저장소를 성공적으로 동기화(Pull)하였습니다."
         }
 
-    async def list_topics(self) -> list[TopicInfo]:
+    def can_access_topic(self, topic: TopicInfo, user: Optional[User]) -> bool:
+        """Checks whether the user has access permission to the topic."""
+        if not user:
+            return topic.is_public
+        if user.is_admin:
+            return True
+        if topic.is_public:
+            return True
+        if topic.owner and topic.owner == user.username:
+            return True
+        if user.username in topic.assigned_users:
+            return True
+        return False
+
+    async def list_topics(self, user: Optional[User] = None) -> list[TopicInfo]:
         database = await db.get_db()
         async with database.execute("""
-            SELECT t.id, t.name, t.title, t.description, t.path, t.created_at, t.updated_at,
+            SELECT t.id, t.name, t.title, t.description, t.path, t.owner, t.assigned_users, t.is_public,
+                   t.created_at, t.updated_at,
                    COUNT(p.id) as page_count
             FROM topics t
             LEFT JOIN pages p ON t.id = p.topic_id
@@ -418,15 +464,19 @@ class TopicService:
             ORDER BY t.updated_at DESC
         """) as cursor:
             rows = await cursor.fetchall()
-            return [
+            all_topics = [
                 self._row_to_topic_info(row)
                 for row in rows
             ]
+            if user and user.is_admin:
+                return all_topics
+            return [t for t in all_topics if self.can_access_topic(t, user)]
 
     async def get_topic(self, topic_id: str) -> Optional[TopicInfo]:
         database = await db.get_db()
         async with database.execute("""
-            SELECT t.id, t.name, t.title, t.description, t.path, t.created_at, t.updated_at,
+            SELECT t.id, t.name, t.title, t.description, t.path, t.owner, t.assigned_users, t.is_public,
+                   t.created_at, t.updated_at,
                    COUNT(p.id) as page_count
             FROM topics t
             LEFT JOIN pages p ON t.id = p.topic_id
@@ -437,6 +487,78 @@ class TopicService:
             if not row:
                 return None
             return self._row_to_topic_info(row)
+
+    async def update_topic_permissions(self, topic_id: str, is_public: bool, assigned_users: list[str]) -> TopicInfo:
+        """Updates permissions (is_public, assigned_users) for a topic."""
+        topic = await self.get_topic(topic_id)
+        if not topic:
+            raise ValueError(f"Topic '{topic_id}' not found.")
+
+        database = await db.get_db()
+        now = datetime.now(timezone.utc).isoformat()
+        is_public_val = 1 if is_public else 0
+        assigned_json = json.dumps(assigned_users or [])
+
+        await database.execute("""
+            UPDATE topics
+            SET is_public = ?, assigned_users = ?, updated_at = ?
+            WHERE id = ?
+        """, (is_public_val, assigned_json, now, topic.id))
+        await database.commit()
+
+        # Update .wiki/config.json if it exists
+        config_file = Path(topic.path) / ".wiki" / "config.json"
+        if config_file.exists():
+            try:
+                with open(config_file, "r", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                cdata["is_public"] = is_public
+                cdata["assigned_users"] = assigned_users
+                with open(config_file, "w", encoding="utf-8") as f:
+                    json.dump(cdata, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                logger.warning(f"Failed to update config.json for {topic.name}: {e}")
+
+        updated = await self.get_topic(topic.id)
+        return updated
+
+    async def upload_files(self, topic_id: str, files: list[UploadFile], subpath: str = "") -> dict:
+        """Uploads files to a topic directory and triggers re-indexing."""
+        topic = await self.get_topic(topic_id)
+        if not topic:
+            raise ValueError(f"Topic '{topic_id}' not found.")
+
+        topic_dir = Path(topic.path).resolve()
+        
+        # Clean subpath to prevent path traversal
+        clean_sub = os.path.normpath(subpath).lstrip("/\\.") if subpath else ""
+        target_dir = (topic_dir / clean_sub).resolve()
+
+        if not str(target_dir).startswith(str(topic_dir)):
+            raise ValueError("허용되지 않은 업로드 경로입니다.")
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        saved_files = []
+        for file in files:
+            filename = os.path.basename(file.filename or "uploaded_file")
+            if not filename or filename.startswith("."):
+                continue
+            dest_file = target_dir / filename
+            content = await file.read()
+            with open(dest_file, "wb") as f:
+                f.write(content)
+            saved_files.append(str(dest_file.relative_to(topic_dir)))
+
+        # Trigger indexing sync
+        await self.sync_topic(topic.id)
+
+        return {
+            "success": True,
+            "uploaded_count": len(saved_files),
+            "files": saved_files,
+            "message": f"{len(saved_files)}개 파일 업로드 및 동기화가 완료되었습니다."
+        }
 
     async def delete_topic(self, topic_id: str, delete_files: bool = False):
         topic = await self.get_topic(topic_id)

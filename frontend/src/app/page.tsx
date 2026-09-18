@@ -314,17 +314,21 @@ export default function Home() {
               <BookOpen className="w-7 h-7" />
             </div>
             <h2 className="text-lg font-bold text-foreground mb-2">
-              주제별 위키 저장소를 생성해 보세요
+              {user?.isAdmin ? "주제별 위키 저장소를 생성해 보세요" : "접근 가능한 위키가 없습니다"}
             </h2>
             <p className="text-xs max-w-sm mb-6 text-muted-foreground leading-relaxed">
-              LLM과 함께 주제별 지식 베이스를 구축하고 Claude Code CLI와 연동하여 자율적으로 지식을 확장하세요.
+              {user?.isAdmin
+                ? "LLM과 함께 주제별 지식 베이스를 구축하고 Claude Code CLI와 연동하여 자율적으로 지식을 확장하세요."
+                : "현재 할당되었거나 공개된 위키 저장소가 없습니다. 관리자에게 위키 접근 권한을 요청해 주세요."}
             </p>
-            <button
-              onClick={() => setIsCreateTopicOpen(true)}
-              className="px-4 py-2 bg-primary text-primary-foreground font-semibold text-xs rounded-lg hover:bg-primary/90 transition shadow-md"
-            >
-              새 주제 저장소 만들기
-            </button>
+            {user?.isAdmin && (
+              <button
+                onClick={() => setIsCreateTopicOpen(true)}
+                className="px-4 py-2 bg-primary text-primary-foreground font-semibold text-xs rounded-lg hover:bg-primary/90 transition shadow-md"
+              >
+                새 주제 저장소 만들기
+              </button>
+            )}
           </div>
         ) : activeTab === "wiki" ? (
           <div className="flex-1 flex h-full overflow-hidden">

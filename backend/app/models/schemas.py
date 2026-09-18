@@ -7,6 +7,8 @@ class TopicCreate(BaseModel):
     title: str = Field(..., description="Human readable title for the topic")
     description: Optional[str] = Field(None, description="Topic description")
     system_prompt: Optional[str] = Field(None, description="System prompt for Claude Code in this topic")
+    is_public: Optional[bool] = Field(False, description="Whether this topic is accessible to all users")
+    assigned_users: Optional[list[str]] = Field(default_factory=list, description="List of usernames assigned to this topic")
 
 class TopicGitImport(BaseModel):
     git_url: str = Field(..., description="Git repository clone URL (e.g. https://github.com/user/repo.git)")
@@ -18,6 +20,12 @@ class TopicGitImport(BaseModel):
     auth_token: Optional[str] = Field(None, description="Optional GitHub/GitLab personal access token or password for private repos")
     insecure_ssl: Optional[bool] = Field(False, description="Disable SSL verification for self-signed certificates")
     depth: Optional[int] = Field(1, description="Git clone depth (1 for shallow clone)")
+    is_public: Optional[bool] = Field(False, description="Whether this topic is accessible to all users")
+    assigned_users: Optional[list[str]] = Field(default_factory=list, description="List of usernames assigned to this topic")
+
+class TopicPermissionsUpdate(BaseModel):
+    assigned_users: list[str] = Field(default_factory=list, description="List of usernames assigned to this topic")
+    is_public: bool = Field(False, description="Whether this topic is accessible to all users")
 
 class TopicInfo(BaseModel):
     id: str
@@ -28,6 +36,9 @@ class TopicInfo(BaseModel):
     page_count: int = 0
     is_git_repo: bool = False
     git_url: Optional[str] = None
+    owner: Optional[str] = None
+    assigned_users: list[str] = []
+    is_public: bool = False
     created_at: datetime
     updated_at: datetime
 

@@ -7,8 +7,25 @@ export interface TopicInfo {
   page_count: number;
   is_git_repo?: boolean;
   git_url?: string;
+  owner?: string;
+  assigned_users?: string[];
+  is_public?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface TopicPermissionsUpdate {
+  is_public: boolean;
+  assigned_users: string[];
+}
+
+export interface TopicCreate {
+  name: string;
+  title: string;
+  description?: string;
+  system_prompt?: string;
+  is_public?: boolean;
+  assigned_users?: string[];
 }
 
 export interface TopicGitImport {
@@ -21,6 +38,8 @@ export interface TopicGitImport {
   auth_token?: string;
   insecure_ssl?: boolean;
   depth?: number;
+  is_public?: boolean;
+  assigned_users?: string[];
 }
 
 export interface TopicTreeItem {

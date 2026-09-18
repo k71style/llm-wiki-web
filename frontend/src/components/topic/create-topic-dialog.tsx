@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Plus, FolderPlus, GitBranch, Download, Loader2, Key, User, ShieldAlert } from "lucide-react";
+import { X, Plus, FolderPlus, GitBranch, Download, Loader2, Key, User, ShieldAlert, Globe, Lock, Shield } from "lucide-react";
 import { createTopic, importTopicFromGit } from "@/lib/api";
 import { TopicInfo } from "@/types";
 
@@ -21,6 +21,8 @@ export function CreateTopicDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
+  const [isPublic, setIsPublic] = useState(false);
+  const [assignedUsersInput, setAssignedUsersInput] = useState("");
   
   // Git import state
   const [gitUrl, setGitUrl] = useState("");
@@ -69,6 +71,11 @@ export function CreateTopicDialog({
     setError(null);
 
     try {
+      const assignedList = assignedUsersInput
+        .split(",")
+        .map((u) => u.trim().toLowerCase())
+        .filter(Boolean);
+
       let topic: TopicInfo;
       if (tab === "git") {
         topic = await importTopicFromGit({
@@ -81,6 +88,8 @@ export function CreateTopicDialog({
           auth_token: authToken.trim() || undefined,
           insecure_ssl: insecureSsl,
           depth: 1,
+          is_public: isPublic,
+          assigned_users: assignedList,
         });
       } else {
         topic = await createTopic({
@@ -88,6 +97,8 @@ export function CreateTopicDialog({
           title: title.trim(),
           description: description.trim() || undefined,
           system_prompt: systemPrompt.trim() || undefined,
+          is_public: isPublic,
+          assigned_users: assignedList,
         });
       }
 
@@ -95,6 +106,8 @@ export function CreateTopicDialog({
       setTitle("");
       setDescription("");
       setSystemPrompt("");
+      setIsPublic(false);
+      setAssignedUsersInput("");
       setGitUrl("");
       setBranch("");
       setAuthUsername("");
@@ -317,6 +330,43 @@ export function CreateTopicDialog({
               />
             </div>
           )}
+
+          {/* 위키 접근 권한 설정 */}
+          <div className="p-3 rounded-lg border border-border bg-secondary/20 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                {isPublic ? (
+                  <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                )}
+                <span>위키 접근 권한</span>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer text-xs select-none">
+                <input
+                  type="checkbox"
+                  checked={isPublic}
+                  onChange={(e) => setIsPublic(e.target.checked)}
+                  className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer"
+                />
+                <span className="text-zinc-300">전체 공개 (모든 사용자 열람 가능)</span>
+              </label>
+            </div>
+            {!isPublic && (
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+                  접근 허용 일반 사용자 (쉼표로 구분, 예: user1, user2)
+                </label>
+                <input
+                  type="text"
+                  placeholder="비어있으면 관리자만 접근 가능"
+                  value={assignedUsersInput}
+                  onChange={(e) => setAssignedUsersInput(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-secondary/50 border border-border rounded-lg text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            )}
+          </div>
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
             <button

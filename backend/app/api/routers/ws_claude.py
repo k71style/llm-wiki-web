@@ -32,6 +32,14 @@ async def websocket_claude_session(websocket: WebSocket, topic_id: str):
         await websocket.close()
         return
 
+    if not topic_service.can_access_topic(topic, user):
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": "해당 위키에 대한 접근 권한이 없습니다."
+        }))
+        await websocket.close(code=4003)
+        return
+
     async def send_output(data: str):
         try:
             await websocket.send_text(json.dumps({

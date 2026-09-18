@@ -17,5 +17,7 @@ async def search_pages(
     topic = await topic_service.get_topic(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
+    if not topic_service.can_access_topic(topic, user):
+        raise HTTPException(status_code=403, detail="해당 위키에 대한 검색 권한이 없습니다.")
         
     return await index_service.search(topic.id, q, mode=mode, limit=limit)

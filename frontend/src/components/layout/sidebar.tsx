@@ -23,10 +23,13 @@ import {
   GitBranch,
   Download,
   Upload,
+  Globe,
+  Lock,
 } from "lucide-react";
 import { TopicInfo, TopicTreeItem } from "@/types";
 import { useAuth } from "@/contexts/auth-context";
 import { pullTopic } from "@/lib/api";
+import { TopicPermissionsDialog } from "@/components/topic/topic-permissions-dialog";
 
 interface SidebarProps {
   topics: TopicInfo[];
@@ -72,6 +75,7 @@ export function Sidebar({
   });
   const [pulling, setPulling] = useState(false);
   const [pullMsg, setPullMsg] = useState<string | null>(null);
+  const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
 
   const handleGitPull = async () => {
     if (!currentTopic || !currentTopic.is_git_repo || pulling) return;
@@ -182,16 +186,18 @@ export function Sidebar({
             <span>LLM-Wiki</span>
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => {
-                onOpenCreateTopic();
-                if (onCloseMobile) onCloseMobile();
-              }}
-              title="새 주제 저장소 추가"
-              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition"
-            >
-              <FolderPlus className="w-4 h-4" />
-            </button>
+            {user?.isAdmin && (
+              <button
+                onClick={() => {
+                  onOpenCreateTopic();
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                title="새 주제 저장소 추가 (관리자 전용)"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition"
+              >
+                <FolderPlus className="w-4 h-4" />
+              </button>
+            )}
             {isMobile && onCloseMobile && (
               <button
                 onClick={onCloseMobile}
@@ -219,7 +225,7 @@ export function Sidebar({
             ) : (
               topics.map((t) => (
                 <option key={t.id} value={t.id}>
-                  📁 {t.title} ({t.name})
+                  {t.is_public ? "🌐" : "🔒"} {t.title} ({t.name})
                 </option>
               ))
             )}
@@ -228,6 +234,38 @@ export function Sidebar({
             <ChevronDown className="w-3.5 h-3.5" />
           </div>
         </div>
+
+        {/* Topic Access Permission Badge & Admin Control */}
+        {currentTopic && (
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1 py-0.5">
+            <span className="flex items-center gap-1 font-medium">
+              {currentTopic.is_public ? (
+                <span className="inline-flex items-center gap-1 text-emerald-400">
+                  <Globe className="w-3 h-3" />
+                  <span>공개 위키</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-amber-400">
+                  <Lock className="w-3 h-3" />
+                  <span>비공개 위키</span>
+                </span>
+              )}
+            </span>
+            {user?.isAdmin && (
+              <button
+                onClick={() => {
+                  setIsPermissionsOpen(true);
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                className="hover:text-primary transition flex items-center gap-1 text-[10px] bg-secondary/80 hover:bg-secondary px-1.5 py-0.5 rounded border border-border/80 text-foreground"
+                title="위키 접근 권한 설정"
+              >
+                <Shield className="w-2.5 h-2.5 text-primary" />
+                <span>권한 관리</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Global Navigation Tabs (Desktop / Drawer) */}
         <div className="grid grid-cols-3 gap-1 bg-secondary/50 p-1 rounded-lg">
@@ -342,7 +380,7 @@ export function Sidebar({
                 )}
               </div>
               <div className="flex items-center gap-1">
-                {currentTopic.is_git_repo && (
+                {user?.isAdmin && currentTopic.is_git_repo && (
                   <button
                     onClick={handleGitPull}
                     disabled={pulling}
@@ -352,18 +390,20 @@ export function Sidebar({
                     <Download className="w-3.5 h-3.5" />
                   </button>
                 )}
-                <button
-                  onClick={() => {
-                    if (confirm(`'${currentTopic.title}' 주제 저장소를 삭제하시겠습니까?`)) {
-                      onDeleteTopic(currentTopic.id);
-                      if (onCloseMobile) onCloseMobile();
-                    }
-                  }}
-                  title="저장소 삭제"
-                  className="p-1 hover:text-destructive transition rounded"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {user?.isAdmin && (
+                  <button
+                    onClick={() => {
+                      if (confirm(`'${currentTopic.title}' 주제 저장소를 삭제하시겠습니까?`)) {
+                        onDeleteTopic(currentTopic.id);
+                        if (onCloseMobile) onCloseMobile();
+                      }
+                    }}
+                    title="저장소 삭제 (관리자 전용)"
+                    className="p-1 hover:text-destructive transition rounded"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
             {pullMsg && (
@@ -440,6 +480,17 @@ export function Sidebar({
           </div>
         </div>
       )}
+
+      {/* Topic Permissions Modal */}
+      <TopicPermissionsDialog
+        isOpen={isPermissionsOpen}
+        topic={currentTopic}
+        onClose={() => setIsPermissionsOpen(false)}
+        onUpdated={(updatedTopic) => {
+          onSelectTopic(updatedTopic);
+          onRefresh();
+        }}
+      />
     </>
   );
 }

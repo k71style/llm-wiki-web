@@ -23,6 +23,9 @@ async def upload_files(
     if not topic:
         raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
 
+    if not topic_service.can_access_topic(topic, user):
+        raise HTTPException(status_code=403, detail="해당 위키에 접근/업로드할 권한이 없습니다.")
+
     results = []
     errors = []
 
@@ -59,6 +62,9 @@ async def get_topic_asset(
     topic = await topic_service.get_topic(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
+
+    if not topic_service.can_access_topic(topic, user):
+        raise HTTPException(status_code=403, detail="해당 위키에 접근할 권한이 없습니다.")
 
     safe_name = Path(filename).name
     file_path = Path(topic.path) / "assets" / safe_name
