@@ -1,5 +1,6 @@
 import {
   TopicInfo,
+  TopicGitImport,
   TopicTreeItem,
   PageDetail,
   SearchResultItem,
@@ -102,15 +103,7 @@ export async function createTopic(data: {
   });
 }
 
-export async function importTopicFromGit(data: {
-  git_url: string;
-  name: string;
-  title: string;
-  description?: string;
-  branch?: string;
-  auth_token?: string;
-  depth?: number;
-}): Promise<TopicInfo> {
+export async function importTopicFromGit(data: TopicGitImport): Promise<TopicInfo> {
   return apiFetch<TopicInfo>(`${API_BASE}/topics/import/git`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

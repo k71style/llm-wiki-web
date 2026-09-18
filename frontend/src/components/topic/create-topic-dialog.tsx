@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Plus, FolderPlus, GitBranch, Download, Loader2, Key } from "lucide-react";
+import { X, Plus, FolderPlus, GitBranch, Download, Loader2, Key, User, ShieldAlert } from "lucide-react";
 import { createTopic, importTopicFromGit } from "@/lib/api";
 import { TopicInfo } from "@/types";
 
@@ -25,7 +25,9 @@ export function CreateTopicDialog({
   // Git import state
   const [gitUrl, setGitUrl] = useState("");
   const [branch, setBranch] = useState("");
+  const [authUsername, setAuthUsername] = useState("");
   const [authToken, setAuthToken] = useState("");
+  const [insecureSsl, setInsecureSsl] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +77,9 @@ export function CreateTopicDialog({
           title: title.trim(),
           description: description.trim() || undefined,
           branch: branch.trim() || undefined,
+          auth_username: authUsername.trim() || undefined,
           auth_token: authToken.trim() || undefined,
+          insecure_ssl: insecureSsl,
           depth: 1,
         });
       } else {
@@ -93,7 +97,9 @@ export function CreateTopicDialog({
       setSystemPrompt("");
       setGitUrl("");
       setBranch("");
+      setAuthUsername("");
       setAuthToken("");
+      setInsecureSsl(false);
       onTopicCreated(topic);
       onClose();
     } catch (err: any) {
@@ -220,32 +226,66 @@ export function CreateTopicDialog({
           </div>
 
           {tab === "git" && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                  브랜치 (선택사항)
-                </label>
-                <input
-                  type="text"
-                  placeholder="기본값 (main / master)"
-                  value={branch}
-                  onChange={(e) => setBranch(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
-                />
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                    브랜치 (선택사항)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="기본값 (main / master)"
+                    value={branch}
+                    onChange={(e) => setBranch(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1">
+                    <User className="w-3 h-3 text-muted-foreground" />
+                    <span>계정 ID (선택사항)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="사내 GitLab/Git ID"
+                    value={authUsername}
+                    onChange={(e) => setAuthUsername(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1">
+                    <Key className="w-3 h-3 text-muted-foreground" />
+                    <span>Access Token / 비밀번호</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="PAT 토큰 또는 비밀번호"
+                    value={authToken}
+                    onChange={(e) => setAuthToken(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <Key className="w-3 h-3 text-muted-foreground" />
-                  <span>Access Token (선택사항)</span>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-secondary/30 border border-border/50 text-xs text-muted-foreground">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={insecureSsl}
+                    onChange={(e) => setInsecureSsl(e.target.checked)}
+                    className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <span className="flex items-center gap-1 text-zinc-300">
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                    <span>사설 SSL 인증서 검증 건너뛰기 (--insecure)</span>
+                  </span>
                 </label>
-                <input
-                  type="password"
-                  placeholder="프라이빗 저장소용 PAT"
-                  value={authToken}
-                  onChange={(e) => setAuthToken(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
-                />
+                <span className="text-[11px] text-zinc-400">
+                  사내 GitLab은 <strong>계정 ID</strong>와 <strong>토큰/비밀번호</strong>를 함께 입력하세요.
+                </span>
               </div>
             </div>
           )}

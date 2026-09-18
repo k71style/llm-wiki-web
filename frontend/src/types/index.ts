@@ -17,7 +17,9 @@ export interface TopicGitImport {
   title: string;
   description?: string;
   branch?: string;
+  auth_username?: string;
   auth_token?: string;
+  insecure_ssl?: boolean;
   depth?: number;
 }
 

@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 from backend.app.core.config import settings
 from backend.app.db.database import db
@@ -195,6 +196,68 @@ class TopicService:
         
         return await self.get_topic(topic_id)
 
+    @staticmethod
+    def _prepare_clone_url(
+        git_url: str,
+        username: Optional[str] = None,
+        token: Optional[str] = None,
+    ) -> tuple[str, list[str]]:
+        """
+        Builds authenticated clone URL safely encoding credentials.
+        Returns (clone_url, secrets_to_mask)
+        """
+        clean_url = git_url.strip()
+        secrets: list[str] = []
+        if token and token.strip():
+            secrets.append(token.strip())
+        if username and username.strip():
+            secrets.append(username.strip())
+
+        if not token or not token.strip():
+            return clean_url, secrets
+
+        tok = quote(token.strip(), safe="")
+        user = quote(username.strip(), safe="") if (username and username.strip()) else None
+
+        if "://" in clean_url:
+            proto, rest = clean_url.split("://", 1)
+            # Remove any existing credentials in URL
+            if "@" in rest:
+                rest = rest.split("@", 1)[1]
+
+            # Determine auth scheme
+            if user:
+                # Specified username + token / password
+                auth_part = f"{user}:{tok}"
+            elif "github.com" in rest.lower():
+                # GitHub Personal Access Token standard: https://<token>@github.com/...
+                auth_part = tok
+            else:
+                # GitLab or generic Git default to oauth2 username
+                auth_part = f"oauth2:{tok}"
+
+            return f"{proto}://{auth_part}@{rest}", secrets
+
+        return clean_url, secrets
+
+    @staticmethod
+    def _sanitize_error(err_msg: str, secrets: list[str]) -> str:
+        """Masks sensitive credentials and returns user-friendly guidance."""
+        msg = err_msg
+        for s in secrets:
+            if s:
+                msg = msg.replace(s, "******")
+                msg = msg.replace(quote(s, safe=""), "******")
+
+        lower = msg.lower()
+        if "could not read username" in lower or "authentication failed" in lower or "invalid username or password" in lower:
+            return f"Git 인증 실패: 저장소 접근 권한이 없거나 계정 ID / Access Token이 올바르지 않습니다.\n상세 에러: {msg.strip()}"
+        if "repository not found" in lower or "does not exist" in lower:
+            return f"Git 저장소를 찾을 수 없음: URL 경로 및 접근 권한을 확인해 주세요.\n상세 에러: {msg.strip()}"
+        if "ssl certificate problem" in lower or "certificate verify failed" in lower:
+            return f"SSL 인증서 검증 실패: 사내 사설 인증서인 경우 'SSL 검증 건너뛰기' 옵션을 활성화해 주세요.\n상세 에러: {msg.strip()}"
+        return msg.strip()
+
     async def import_from_git(self, git_in: TopicGitImport) -> TopicInfo:
         """Clones a remote Git repository into a new topic directory and indexes it."""
         database = await db.get_db()
@@ -210,23 +273,30 @@ class TopicService:
         if topic_dir.exists() and any(topic_dir.iterdir()):
             raise ValueError(f"Directory '{topic_name}' already exists and is not empty.")
 
-        # Prepare Git clone URL (inject auth token if provided)
-        clone_url = git_in.git_url.strip()
-        if git_in.auth_token and git_in.auth_token.strip():
-            token = git_in.auth_token.strip()
-            if "://" in clone_url:
-                proto, rest = clone_url.split("://", 1)
-                if "@" in rest:
-                    rest = rest.split("@", 1)[1]
-                clone_url = f"{proto}://oauth2:{token}@{rest}"
+        # Prepare Git clone URL (with safe credentials encoding)
+        clone_url, secrets = self._prepare_clone_url(
+            git_in.git_url,
+            username=git_in.auth_username,
+            token=git_in.auth_token,
+        )
 
         # Build git clone command
-        cmd = ["git", "clone"]
+        cmd = ["git"]
+        if git_in.insecure_ssl:
+            cmd.extend(["-c", "http.sslVerify=false"])
+        cmd.append("clone")
+
         if git_in.depth and git_in.depth > 0:
             cmd.extend(["--depth", str(git_in.depth)])
         if git_in.branch and git_in.branch.strip():
             cmd.extend(["--branch", git_in.branch.strip()])
         cmd.extend([clone_url, str(topic_dir)])
+
+        # Setup environment without terminal prompts
+        git_env = os.environ.copy()
+        git_env["GIT_TERMINAL_PROMPT"] = "0"
+        if git_in.insecure_ssl:
+            git_env["GIT_SSL_NO_VERIFY"] = "true"
 
         logger.info("Cloning Git repository %s into %s", git_in.git_url, topic_dir)
 
@@ -234,6 +304,7 @@ class TopicService:
         def _clone():
             res = subprocess.run(
                 cmd,
+                env=git_env,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -241,10 +312,9 @@ class TopicService:
                 timeout=180
             )
             if res.returncode != 0:
-                err_msg = res.stderr or res.stdout or "Unknown Git error"
-                if git_in.auth_token:
-                    err_msg = err_msg.replace(git_in.auth_token, "******")
-                raise RuntimeError(err_msg.strip())
+                raw_err = res.stderr or res.stdout or "Unknown Git error"
+                sanitized = self._sanitize_error(raw_err, secrets)
+                raise RuntimeError(sanitized)
 
         try:
             await loop.run_in_executor(None, _clone)
@@ -307,9 +377,12 @@ class TopicService:
 
         loop = asyncio.get_running_loop()
         def _pull():
+            git_env = os.environ.copy()
+            git_env["GIT_TERMINAL_PROMPT"] = "0"
             res = subprocess.run(
                 ["git", "pull"],
                 cwd=str(topic_path),
+                env=git_env,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -317,7 +390,8 @@ class TopicService:
                 timeout=60
             )
             if res.returncode != 0:
-                raise RuntimeError(res.stderr or res.stdout or "Git pull error")
+                raw_err = res.stderr or res.stdout or "Git pull error"
+                raise RuntimeError(self._sanitize_error(raw_err, []))
             return res.stdout or "Already up to date."
 
         try:

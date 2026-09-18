@@ -14,7 +14,9 @@ class TopicGitImport(BaseModel):
     title: str = Field(..., description="Human readable title for the topic")
     description: Optional[str] = Field(None, description="Topic description")
     branch: Optional[str] = Field(None, description="Branch to checkout (defaults to default branch)")
-    auth_token: Optional[str] = Field(None, description="Optional GitHub/GitLab personal access token for private repos")
+    auth_username: Optional[str] = Field(None, description="Optional username for Git authentication")
+    auth_token: Optional[str] = Field(None, description="Optional GitHub/GitLab personal access token or password for private repos")
+    insecure_ssl: Optional[bool] = Field(False, description="Disable SSL verification for self-signed certificates")
     depth: Optional[int] = Field(1, description="Git clone depth (1 for shallow clone)")
 
 class TopicInfo(BaseModel):
