@@ -1,7 +1,9 @@
+import asyncio
 import json
 import logging
 import os
 import shutil
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,7 +11,14 @@ from typing import Any, Optional
 
 from backend.app.core.config import settings
 from backend.app.db.database import db
-from backend.app.models.schemas import TopicCreate, TopicInfo, TopicTreeItem, PageDetail, BacklinkItem
+from backend.app.models.schemas import (
+    TopicCreate,
+    TopicGitImport,
+    TopicInfo,
+    TopicTreeItem,
+    PageDetail,
+    BacklinkItem,
+)
 from backend.app.services.wiki_parser import parse_markdown
 
 logger = logging.getLogger("llm_wiki.topic_service")
@@ -77,6 +86,44 @@ This is the first concept page in the `{name}` topic repository.
 """
 
 class TopicService:
+    def _get_git_info(self, topic_path: Path) -> tuple[bool, Optional[str]]:
+        git_dir = topic_path / ".git"
+        if not git_dir.is_dir():
+            return False, None
+        try:
+            config_file = git_dir / "config"
+            if config_file.is_file():
+                content = config_file.read_text(encoding="utf-8", errors="replace")
+                for line in content.splitlines():
+                    line_str = line.strip()
+                    if line_str.startswith("url ="):
+                        raw_url = line_str.split("url =", 1)[1].strip()
+                        # Mask any tokens in URL for display
+                        if "@" in raw_url and "://" in raw_url:
+                            proto, rest = raw_url.split("://", 1)
+                            domain_and_path = rest.split("@", 1)[1]
+                            return True, f"{proto}://{domain_and_path}"
+                        return True, raw_url
+            return True, None
+        except Exception:
+            return True, None
+
+    def _row_to_topic_info(self, row: Any) -> TopicInfo:
+        path_str = row["path"]
+        is_git, git_url = self._get_git_info(Path(path_str))
+        return TopicInfo(
+            id=row["id"],
+            name=row["name"],
+            title=row["title"],
+            description=row["description"],
+            path=path_str,
+            page_count=row["page_count"],
+            is_git_repo=is_git,
+            git_url=git_url,
+            created_at=datetime.fromisoformat(row["created_at"]) if isinstance(row["created_at"], str) else row["created_at"],
+            updated_at=datetime.fromisoformat(row["updated_at"]) if isinstance(row["updated_at"], str) else row["updated_at"],
+        )
+
     async def create_topic(self, topic_in: TopicCreate) -> TopicInfo:
         database = await db.get_db()
         topic_id = str(uuid.uuid4())
@@ -148,6 +195,144 @@ class TopicService:
         
         return await self.get_topic(topic_id)
 
+    async def import_from_git(self, git_in: TopicGitImport) -> TopicInfo:
+        """Clones a remote Git repository into a new topic directory and indexes it."""
+        database = await db.get_db()
+        topic_id = str(uuid.uuid4())
+        topic_name = git_in.name.strip().lower().replace(" ", "-")
+        topic_dir = settings.DATA_DIR / topic_name
+
+        # Check if topic name already exists in DB
+        async with database.execute("SELECT id FROM topics WHERE name = ?", (topic_name,)) as cursor:
+            if await cursor.fetchone():
+                raise ValueError(f"Topic with name '{topic_name}' already exists.")
+
+        if topic_dir.exists() and any(topic_dir.iterdir()):
+            raise ValueError(f"Directory '{topic_name}' already exists and is not empty.")
+
+        # Prepare Git clone URL (inject auth token if provided)
+        clone_url = git_in.git_url.strip()
+        if git_in.auth_token and git_in.auth_token.strip():
+            token = git_in.auth_token.strip()
+            if "://" in clone_url:
+                proto, rest = clone_url.split("://", 1)
+                if "@" in rest:
+                    rest = rest.split("@", 1)[1]
+                clone_url = f"{proto}://oauth2:{token}@{rest}"
+
+        # Build git clone command
+        cmd = ["git", "clone"]
+        if git_in.depth and git_in.depth > 0:
+            cmd.extend(["--depth", str(git_in.depth)])
+        if git_in.branch and git_in.branch.strip():
+            cmd.extend(["--branch", git_in.branch.strip()])
+        cmd.extend([clone_url, str(topic_dir)])
+
+        logger.info("Cloning Git repository %s into %s", git_in.git_url, topic_dir)
+
+        loop = asyncio.get_running_loop()
+        def _clone():
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=180
+            )
+            if res.returncode != 0:
+                err_msg = res.stderr or res.stdout or "Unknown Git error"
+                if git_in.auth_token:
+                    err_msg = err_msg.replace(git_in.auth_token, "******")
+                raise RuntimeError(err_msg.strip())
+
+        try:
+            await loop.run_in_executor(None, _clone)
+        except Exception as e:
+            if topic_dir.exists():
+                shutil.rmtree(topic_dir, ignore_errors=True)
+            raise ValueError(f"Git Clone 실패: {e}")
+
+        # Ensure .wiki directory and config exist
+        wiki_dir = topic_dir / ".wiki"
+        wiki_dir.mkdir(exist_ok=True)
+        config_file = wiki_dir / "config.json"
+        if not config_file.exists():
+            config_data = {
+                "id": topic_id,
+                "name": topic_name,
+                "title": git_in.title,
+                "description": git_in.description or "",
+                "git_url": git_in.git_url
+            }
+            with open(config_file, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, indent=2, ensure_ascii=False)
+
+        # Ensure CLAUDE.md exists
+        claude_file = topic_dir / "CLAUDE.md"
+        if not claude_file.exists():
+            claude_content = CLAUDE_MD_TEMPLATE.format(
+                title=git_in.title,
+                name=topic_name,
+                system_prompt="Analyze and expand knowledge while maintaining markdown consistency and [[WikiLinks]]."
+            )
+            with open(claude_file, "w", encoding="utf-8") as f:
+                f.write(claude_content)
+
+        # Insert into DB
+        now = datetime.now(timezone.utc).isoformat()
+        await database.execute(
+            """
+            INSERT INTO topics (id, name, title, description, path, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (topic_id, topic_name, git_in.title, git_in.description, str(topic_dir), now, now)
+        )
+        await database.commit()
+
+        # Scan and index all cloned markdown files
+        await self.sync_topic(topic_id)
+
+        return await self.get_topic(topic_id)
+
+    async def pull_topic(self, topic_id: str) -> dict:
+        """Pulls latest changes from remote Git repository and updates the index."""
+        topic = await self.get_topic(topic_id)
+        if not topic:
+            raise ValueError(f"Topic '{topic_id}' not found.")
+
+        topic_path = Path(topic.path)
+        if not (topic_path / ".git").is_dir():
+            raise ValueError(f"주제 '{topic.title}'은(는) Git 저장소가 아닙니다.")
+
+        loop = asyncio.get_running_loop()
+        def _pull():
+            res = subprocess.run(
+                ["git", "pull"],
+                cwd=str(topic_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60
+            )
+            if res.returncode != 0:
+                raise RuntimeError(res.stderr or res.stdout or "Git pull error")
+            return res.stdout or "Already up to date."
+
+        try:
+            output = await loop.run_in_executor(None, _pull)
+        except Exception as e:
+            raise ValueError(f"Git pull 실패: {e}")
+
+        # Re-sync files into DB
+        await self.sync_topic(topic.id)
+        return {
+            "success": True,
+            "output": output.strip(),
+            "message": f"'{topic.title}' 저장소를 성공적으로 동기화(Pull)하였습니다."
+        }
+
     async def list_topics(self) -> list[TopicInfo]:
         database = await db.get_db()
         async with database.execute("""
@@ -160,16 +345,7 @@ class TopicService:
         """) as cursor:
             rows = await cursor.fetchall()
             return [
-                TopicInfo(
-                    id=row["id"],
-                    name=row["name"],
-                    title=row["title"],
-                    description=row["description"],
-                    path=row["path"],
-                    page_count=row["page_count"],
-                    created_at=datetime.fromisoformat(row["created_at"]) if isinstance(row["created_at"], str) else row["created_at"],
-                    updated_at=datetime.fromisoformat(row["updated_at"]) if isinstance(row["updated_at"], str) else row["updated_at"],
-                )
+                self._row_to_topic_info(row)
                 for row in rows
             ]
 
@@ -186,16 +362,7 @@ class TopicService:
             row = await cursor.fetchone()
             if not row:
                 return None
-            return TopicInfo(
-                id=row["id"],
-                name=row["name"],
-                title=row["title"],
-                description=row["description"],
-                path=row["path"],
-                page_count=row["page_count"],
-                created_at=datetime.fromisoformat(row["created_at"]) if isinstance(row["created_at"], str) else row["created_at"],
-                updated_at=datetime.fromisoformat(row["updated_at"]) if isinstance(row["updated_at"], str) else row["updated_at"],
-            )
+            return self._row_to_topic_info(row)
 
     async def delete_topic(self, topic_id: str, delete_files: bool = False):
         topic = await self.get_topic(topic_id)

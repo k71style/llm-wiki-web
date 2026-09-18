@@ -5,8 +5,20 @@ export interface TopicInfo {
   description?: string;
   path: string;
   page_count: number;
+  is_git_repo?: boolean;
+  git_url?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface TopicGitImport {
+  git_url: string;
+  name: string;
+  title: string;
+  description?: string;
+  branch?: string;
+  auth_token?: string;
+  depth?: number;
 }
 
 export interface TopicTreeItem {

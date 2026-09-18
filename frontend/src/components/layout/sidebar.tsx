@@ -20,9 +20,12 @@ import {
   LogOut,
   Shield,
   ShieldCheck,
+  GitBranch,
+  Download,
 } from "lucide-react";
 import { TopicInfo, TopicTreeItem } from "@/types";
 import { useAuth } from "@/contexts/auth-context";
+import { pullTopic } from "@/lib/api";
 
 interface SidebarProps {
   topics: TopicInfo[];
@@ -64,6 +67,25 @@ export function Sidebar({
     concepts: true,
     sources: true,
   });
+  const [pulling, setPulling] = useState(false);
+  const [pullMsg, setPullMsg] = useState<string | null>(null);
+
+  const handleGitPull = async () => {
+    if (!currentTopic || !currentTopic.is_git_repo || pulling) return;
+    setPulling(true);
+    setPullMsg(null);
+    try {
+      const res = await pullTopic(currentTopic.id);
+      setPullMsg(res.message || "동기화 완료");
+      onRefresh();
+      setTimeout(() => setPullMsg(null), 3000);
+    } catch (err: any) {
+      setPullMsg(err.message || "Git pull 실패");
+      setTimeout(() => setPullMsg(null), 4000);
+    } finally {
+      setPulling(false);
+    }
+  };
 
   const toggleFolder = (path: string) => {
     setOpenFolders((prev) => ({ ...prev, [path]: !prev[path] }));
@@ -296,22 +318,47 @@ export function Sidebar({
       {/* Footer / Topic Info & User Profile */}
       <div className="border-t border-border bg-card/60 divide-y divide-border/60">
         {currentTopic && (
-          <div className="p-2.5 text-xs flex items-center justify-between text-muted-foreground">
-            <div className="truncate flex-1">
-              <span className="font-semibold text-foreground">{currentTopic.page_count}</span>개 문서
+          <div>
+            <div className="p-2.5 text-xs flex items-center justify-between text-muted-foreground gap-2">
+              <div className="truncate flex-1 flex items-center gap-1.5">
+                <span className="font-semibold text-foreground">{currentTopic.page_count}</span>개 문서
+                {currentTopic.is_git_repo && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                    <GitBranch className="w-2.5 h-2.5" />
+                    <span>Git</span>
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {currentTopic.is_git_repo && (
+                  <button
+                    onClick={handleGitPull}
+                    disabled={pulling}
+                    title="원격 Git 저장소에서 최신 변경사항 가져오기 (Git Pull)"
+                    className={`p-1 hover:text-sky-400 transition rounded ${pulling ? "text-sky-400 animate-spin" : ""}`}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (confirm(`'${currentTopic.title}' 주제 저장소를 삭제하시겠습니까?`)) {
+                      onDeleteTopic(currentTopic.id);
+                      if (onCloseMobile) onCloseMobile();
+                    }
+                  }}
+                  title="저장소 삭제"
+                  className="p-1 hover:text-destructive transition rounded"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <button
-              onClick={() => {
-                if (confirm(`'${currentTopic.title}' 주제 저장소를 삭제하시겠습니까?`)) {
-                  onDeleteTopic(currentTopic.id);
-                  if (onCloseMobile) onCloseMobile();
-                }
-              }}
-              title="저장소 삭제"
-              className="p-1 hover:text-destructive transition rounded"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {pullMsg && (
+              <div className="px-2.5 py-1 text-[10px] bg-sky-500/10 text-sky-300 border-t border-sky-500/20 truncate">
+                {pullMsg}
+              </div>
+            )}
           </div>
         )}
 

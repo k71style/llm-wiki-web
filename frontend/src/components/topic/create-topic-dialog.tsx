@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { X, Plus, FolderPlus } from "lucide-react";
-import { createTopic } from "@/lib/api";
+import { X, Plus, FolderPlus, GitBranch, Download, Loader2, Key } from "lucide-react";
+import { createTopic, importTopicFromGit } from "@/lib/api";
 import { TopicInfo } from "@/types";
 
 interface CreateTopicDialogProps {
@@ -16,14 +16,40 @@ export function CreateTopicDialog({
   onClose,
   onTopicCreated,
 }: CreateTopicDialogProps) {
+  const [tab, setTab] = useState<"blank" | "git">("blank");
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
+  
+  // Git import state
+  const [gitUrl, setGitUrl] = useState("");
+  const [branch, setBranch] = useState("");
+  const [authToken, setAuthToken] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  // Auto-fill slug & title from Git URL
+  const handleGitUrlChange = (url: string) => {
+    setGitUrl(url);
+    if (!name || name === "my-wiki") {
+      try {
+        const cleanUrl = url.trim().replace(/\.git$/, "").replace(/\/$/, "");
+        const parts = cleanUrl.split("/");
+        const lastPart = parts[parts.length - 1];
+        if (lastPart) {
+          const slug = lastPart.toLowerCase().replace(/[^a-z0-9-_]/g, "-");
+          setName(slug);
+          if (!title) {
+            setTitle(lastPart);
+          }
+        }
+      } catch {}
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,24 +58,46 @@ export function CreateTopicDialog({
       return;
     }
 
+    if (tab === "git" && !gitUrl.trim()) {
+      setError("Git 저장소 URL을 입력해 주세요.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const topic = await createTopic({
-        name: name.trim(),
-        title: title.trim(),
-        description: description.trim() || undefined,
-        system_prompt: systemPrompt.trim() || undefined,
-      });
+      let topic: TopicInfo;
+      if (tab === "git") {
+        topic = await importTopicFromGit({
+          git_url: gitUrl.trim(),
+          name: name.trim(),
+          title: title.trim(),
+          description: description.trim() || undefined,
+          branch: branch.trim() || undefined,
+          auth_token: authToken.trim() || undefined,
+          depth: 1,
+        });
+      } else {
+        topic = await createTopic({
+          name: name.trim(),
+          title: title.trim(),
+          description: description.trim() || undefined,
+          system_prompt: systemPrompt.trim() || undefined,
+        });
+      }
+
       setName("");
       setTitle("");
       setDescription("");
       setSystemPrompt("");
+      setGitUrl("");
+      setBranch("");
+      setAuthToken("");
       onTopicCreated(topic);
       onClose();
     } catch (err: any) {
-      setError(err.message || "주제 저장소 생성 실패");
+      setError(err.message || "주제 저장소 생성/가져오기 실패");
     } finally {
       setLoading(false);
     }
@@ -65,16 +113,54 @@ export function CreateTopicDialog({
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-3 mb-5">
+        <div className="flex items-center gap-3 mb-4">
           <div className="p-2.5 rounded-lg bg-primary/10 text-primary">
-            <FolderPlus className="w-6 h-6" />
+            {tab === "blank" ? <FolderPlus className="w-6 h-6" /> : <GitBranch className="w-6 h-6" />}
           </div>
           <div>
-            <h2 className="text-xl font-bold text-foreground">새 주제 저장소 생성</h2>
+            <h2 className="text-xl font-bold text-foreground">
+              {tab === "blank" ? "새 주제 저장소 생성" : "기존 Git 저장소 가져오기"}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              독립된 위키 디렉토리 및 Claude Code 작업 환경을 생성합니다.
+              {tab === "blank"
+                ? "독립된 위키 디렉토리 및 Claude Code 작업 환경을 생성합니다."
+                : "GitHub, GitLab 등의 마크다운 위키 저장소를 클론하고 자동 인덱싱합니다."}
             </p>
           </div>
+        </div>
+
+        {/* Tab Selection */}
+        <div className="flex p-1 bg-secondary/50 rounded-lg mb-4 border border-border/60">
+          <button
+            type="button"
+            onClick={() => {
+              setTab("blank");
+              setError(null);
+            }}
+            className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-md transition ${
+              tab === "blank"
+                ? "bg-card text-foreground shadow-sm font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <FolderPlus className="w-3.5 h-3.5" />
+            <span>새로 만들기 (Blank)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTab("git");
+              setError(null);
+            }}
+            className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-md transition ${
+              tab === "git"
+                ? "bg-card text-foreground shadow-sm font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <GitBranch className="w-3.5 h-3.5" />
+            <span>Git 저장소 가져오기</span>
+          </button>
         </div>
 
         {error && (
@@ -84,36 +170,85 @@ export function CreateTopicDialog({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              저장소 ID / 디렉토리명 (Slug) *
-            </label>
-            <input
-              type="text"
-              placeholder="예: ai-research, system-architecture"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, "-"));
-                if (!title) setTitle(e.target.value);
-              }}
-              required
-              className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
-            />
+          {tab === "git" && (
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                Git 저장소 Clone URL *
+              </label>
+              <input
+                type="text"
+                placeholder="예: https://github.com/username/my-wiki.git"
+                value={gitUrl}
+                onChange={(e) => handleGitUrlChange(e.target.value)}
+                required
+                className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                저장소 ID (Slug) *
+              </label>
+              <input
+                type="text"
+                placeholder="예: ai-research"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, "-"));
+                  if (!title) setTitle(e.target.value);
+                }}
+                required
+                className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                주제 표시 제목 (Title) *
+              </label>
+              <input
+                type="text"
+                placeholder="예: 인공지능 연구 위키"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              주제 표시 제목 (Title) *
-            </label>
-            <input
-              type="text"
-              placeholder="예: 인공지능 에이전트 연구 위키"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
+          {tab === "git" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                  브랜치 (선택사항)
+                </label>
+                <input
+                  type="text"
+                  placeholder="기본값 (main / master)"
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <Key className="w-3 h-3 text-muted-foreground" />
+                  <span>Access Token (선택사항)</span>
+                </label>
+                <input
+                  type="password"
+                  placeholder="프라이빗 저장소용 PAT"
+                  value={authToken}
+                  onChange={(e) => setAuthToken(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
@@ -128,18 +263,20 @@ export function CreateTopicDialog({
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              Claude Code 전용 시스템 지침 (선택사항)
-            </label>
-            <textarea
-              placeholder="CLAUDE.md에 추가될 주제 맞춤형 프롬프트 규칙"
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              rows={3}
-              className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-            />
-          </div>
+          {tab === "blank" && (
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                Claude Code 전용 시스템 지침 (선택사항)
+              </label>
+              <textarea
+                placeholder="CLAUDE.md에 추가될 주제 맞춤형 프롬프트 규칙"
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                rows={2}
+                className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+              />
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
             <button
@@ -155,7 +292,15 @@ export function CreateTopicDialog({
               className="px-5 py-2 bg-primary text-primary-foreground font-medium rounded-lg text-sm hover:bg-primary/90 transition flex items-center gap-2 disabled:opacity-50"
             >
               {loading ? (
-                <span>생성 중...</span>
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>{tab === "git" ? "저장소 클론 및 색인 중..." : "생성 중..."}</span>
+                </>
+              ) : tab === "git" ? (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>Git 저장소 가져오기</span>
+                </>
               ) : (
                 <>
                   <Plus className="w-4 h-4" />

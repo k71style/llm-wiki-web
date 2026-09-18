@@ -8,6 +8,15 @@ class TopicCreate(BaseModel):
     description: Optional[str] = Field(None, description="Topic description")
     system_prompt: Optional[str] = Field(None, description="System prompt for Claude Code in this topic")
 
+class TopicGitImport(BaseModel):
+    git_url: str = Field(..., description="Git repository clone URL (e.g. https://github.com/user/repo.git)")
+    name: str = Field(..., description="Unique slug for the topic repository, e.g. ai-research")
+    title: str = Field(..., description="Human readable title for the topic")
+    description: Optional[str] = Field(None, description="Topic description")
+    branch: Optional[str] = Field(None, description="Branch to checkout (defaults to default branch)")
+    auth_token: Optional[str] = Field(None, description="Optional GitHub/GitLab personal access token for private repos")
+    depth: Optional[int] = Field(1, description="Git clone depth (1 for shallow clone)")
+
 class TopicInfo(BaseModel):
     id: str
     name: str
@@ -15,6 +24,8 @@ class TopicInfo(BaseModel):
     description: Optional[str] = None
     path: str
     page_count: int = 0
+    is_git_repo: bool = False
+    git_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

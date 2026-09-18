@@ -102,6 +102,28 @@ export async function createTopic(data: {
   });
 }
 
+export async function importTopicFromGit(data: {
+  git_url: string;
+  name: string;
+  title: string;
+  description?: string;
+  branch?: string;
+  auth_token?: string;
+  depth?: number;
+}): Promise<TopicInfo> {
+  return apiFetch<TopicInfo>(`${API_BASE}/topics/import/git`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function pullTopic(topicId: string): Promise<{ success: boolean; output: string; message: string }> {
+  return apiFetch<{ success: boolean; output: string; message: string }>(`${API_BASE}/topics/${topicId}/pull`, {
+    method: "POST",
+  });
+}
+
 export async function deleteTopic(topicId: string, deleteFiles: boolean = false): Promise<void> {
   return apiFetch<void>(`${API_BASE}/topics/${topicId}?delete_files=${deleteFiles}`, {
     method: "DELETE",
