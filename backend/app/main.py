@@ -66,6 +66,7 @@ app.include_router(search.router, prefix=settings.API_V1_STR)
 app.include_router(graph.router, prefix=settings.API_V1_STR)
 app.include_router(mcp.router, prefix=settings.API_V1_STR)
 app.include_router(upload.router, prefix=settings.API_V1_STR)
+app.include_router(ws_claude.chat_router, prefix=settings.API_V1_STR)
 
 # WebSockets
 app.include_router(ws_claude.router)

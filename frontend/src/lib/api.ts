@@ -6,6 +6,7 @@ import {
   PageDetail,
   SearchResultItem,
   KnowledgeGraphData,
+  ChatHistoryResponse,
 } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
@@ -222,3 +223,16 @@ export async function updateTopicPermissions(
     body: JSON.stringify(data),
   });
 }
+
+export async function fetchChatHistory(topicId: string): Promise<ChatHistoryResponse> {
+  return apiFetch<ChatHistoryResponse>(`${API_BASE}/topics/${topicId}/chat/history`, {
+    cache: "no-store",
+  });
+}
+
+export async function clearChatHistory(topicId: string): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>(`${API_BASE}/topics/${topicId}/chat/history`, {
+    method: "DELETE",
+  });
+}
+

@@ -62,7 +62,19 @@ TABLE_SCHEMAS = [
         tags,
         tokenize = 'unicode61'
     );
+    """,
     """
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id TEXT PRIMARY KEY,
+        topic_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        role TEXT NOT NULL,
+        text TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(topic_id) REFERENCES topics(id) ON DELETE CASCADE
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_chat_messages_topic_user ON chat_messages(topic_id, username, created_at);"
 ]
 
 class Database:

@@ -104,3 +104,18 @@ export interface KnowledgeGraphData {
   nodes: GraphNode[];
   links: GraphLink[];
 }
+
+export interface ChatMessageItem {
+  id: string;
+  topic_id: string;
+  username: string;
+  role: "user" | "assistant" | "system";
+  text: string;
+  created_at: string;
+}
+
+export interface ChatHistoryResponse {
+  topic_id: string;
+  messages: ChatMessageItem[];
+}
+

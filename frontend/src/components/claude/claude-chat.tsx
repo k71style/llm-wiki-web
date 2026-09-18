@@ -5,9 +5,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { Send, Bot, User, Sparkles, Terminal, Loader2 } from "lucide-react";
+import { Send, Bot, User, Sparkles, Terminal, Loader2, Trash2 } from "lucide-react";
 import { TopicInfo } from "@/types";
-import { getWebSocketUrl } from "@/lib/api";
+import { getWebSocketUrl, fetchChatHistory, clearChatHistory } from "@/lib/api";
 import { MermaidBlock } from "../wiki/mermaid-block";
 
 interface Message {
@@ -23,18 +23,50 @@ interface ClaudeChatProps {
 }
 
 export function ClaudeChat({ topic, onSwitchToTerminal }: ClaudeChatProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "system",
-      text: `안녕하세요! **${topic.title}** (${topic.name}) 위키 지식 저장소와 연동된 Claude Code 에이전트입니다. 위키 문서 분석, 새로운 개념 정리, 위키링크 연결 작업을 요청하세요.`,
-      timestamp: new Date().toLocaleTimeString(),
-    },
-  ]);
+  const welcomeMessage: Message = {
+    id: "welcome",
+    role: "system",
+    text: `안녕하세요! **${topic.title}** (${topic.name}) 위키 지식 저장소와 연동된 Claude Code 에이전트입니다. 위키 문서 분석, 새로운 개념 정리, 위키링크 연결 작업을 요청하세요.`,
+    timestamp: new Date().toLocaleTimeString(),
+  };
+
+  const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
   const [input, setInput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Load chat history from DB on topic change
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHistory() {
+      setLoadingHistory(true);
+      try {
+        const res = await fetchChatHistory(topic.id);
+        if (!cancelled && res.messages && res.messages.length > 0) {
+          const mapped: Message[] = res.messages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            text: m.text,
+            timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          }));
+          setMessages([welcomeMessage, ...mapped]);
+        } else if (!cancelled) {
+          setMessages([welcomeMessage]);
+        }
+      } catch (err) {
+        console.error("Failed to load chat history:", err);
+      } finally {
+        if (!cancelled) setLoadingHistory(false);
+      }
+    }
+
+    loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [topic.id]);
 
   useEffect(() => {
     const wsUrl = getWebSocketUrl(`/ws/topics/${topic.id}/claude`);
@@ -111,6 +143,19 @@ export function ClaudeChat({ topic, onSwitchToTerminal }: ClaudeChatProps) {
     setInput("");
   };
 
+  const handleClearHistory = async () => {
+    if (!confirm(`'${topic.title}' 저장소의 Claude 대화 기록을 모두 삭제하시겠습니까?`)) {
+      return;
+    }
+    try {
+      await clearChatHistory(topic.id);
+      setMessages([welcomeMessage]);
+    } catch (err) {
+      console.error("Failed to clear chat history:", err);
+      alert("대화 기록 삭제에 실패했습니다.");
+    }
+  };
+
   const PRESETS = [
     { label: "위키 전체 개요 요약", prompt: "현재 위키 저장소의 모든 문서를 읽고 전체적인 지식 구조와 핵심 주제를 요약해줘." },
     { label: "양방향 링크 점검 및 보완", prompt: "개념 문서들을 분석해서 서로 연관되어 있으나 [[위키링크]]가 빠져 있는 곳들을 찾고 연결을 제안해줘." },
@@ -133,18 +178,34 @@ export function ClaudeChat({ topic, onSwitchToTerminal }: ClaudeChatProps) {
           </div>
         </div>
 
-        <button
-          onClick={onSwitchToTerminal}
-          className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 bg-secondary text-foreground text-xs font-medium rounded-lg hover:bg-secondary/80 border border-border transition shrink-0"
-        >
-          <Terminal className="w-3.5 h-3.5 text-sky-400" />
-          <span className="hidden sm:inline">터미널 뷰로 전환</span>
-          <span className="sm:hidden">터미널</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={handleClearHistory}
+            title="서버에 저장된 대화 기록 비우기"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg border border-border/80 transition"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">대화 비우기</span>
+          </button>
+          <button
+            onClick={onSwitchToTerminal}
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 bg-secondary text-foreground text-xs font-medium rounded-lg hover:bg-secondary/80 border border-border transition"
+          >
+            <Terminal className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">터미널 뷰로 전환</span>
+            <span className="sm:hidden">터미널</span>
+          </button>
+        </div>
       </div>
 
       {/* Messages List */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4">
+        {loadingHistory && (
+          <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground bg-secondary/30 rounded-lg border border-border/60">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+            <span>이전 대화 기록을 불러오는 중...</span>
+          </div>
+        )}
         {messages.map((m) => (
           <div
             key={m.id}

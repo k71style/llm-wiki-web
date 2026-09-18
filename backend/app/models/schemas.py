@@ -121,3 +121,16 @@ class MCPResponse(BaseModel):
     id: Optional[Any] = None
     result: Optional[Any] = None
     error: Optional[dict[str, Any]] = None
+
+class ChatMessageItem(BaseModel):
+    id: str
+    topic_id: str
+    username: str
+    role: str  # 'user' | 'assistant' | 'system'
+    text: str
+    created_at: datetime
+
+class ChatHistoryResponse(BaseModel):
+    topic_id: str
+    messages: list[ChatMessageItem]
+
