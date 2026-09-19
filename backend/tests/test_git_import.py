@@ -1,4 +1,4 @@
-﻿import shutil
+import shutil
 import subprocess
 import tempfile
 import pytest
@@ -58,5 +58,28 @@ async def test_git_import_flow(temp_dir):
     assert detail.title == "Deep Learning"
     assert "neural-net" in detail.tags
 
+    subprocess.run(["git", "config", "receive.denyCurrentBranch", "updateInstead"], cwd=str(source_git_dir), check=True, capture_output=True)
+
     pull_res = await topic_service.pull_topic(topic.id)
     assert pull_res["success"] is True
+
+    # Test git push flow
+    # 1. Modify or add a file in the imported topic directory
+    topic_path = Path(topic.path)
+    new_doc_path = topic_path / "concepts" / "pushed-topic.md"
+    with open(new_doc_path, "w", encoding="utf-8") as f:
+        f.write("# Pushed Topic\n\nContent pushed back to remote.\n")
+
+    push_res = await topic_service.push_topic(topic.id, commit_message="Add pushed-topic doc")
+    assert push_res["success"] is True
+    assert push_res["pushed"] is True
+
+    # 2. Verify source repo got the new file
+    assert (source_git_dir / "concepts" / "pushed-topic.md").exists()
+    with open(source_git_dir / "concepts" / "pushed-topic.md", "r", encoding="utf-8") as f:
+        assert "Content pushed back to remote" in f.read()
+
+    # 3. Test push again when no changes
+    push_again_res = await topic_service.push_topic(topic.id)
+    assert push_again_res["success"] is True
+    assert push_again_res["pushed"] is False

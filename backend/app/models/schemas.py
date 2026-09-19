@@ -23,6 +23,9 @@ class TopicGitImport(BaseModel):
     is_public: Optional[bool] = Field(False, description="Whether this topic is accessible to all users")
     assigned_users: Optional[list[str]] = Field(default_factory=list, description="List of usernames assigned to this topic")
 
+class TopicGitPushRequest(BaseModel):
+    commit_message: Optional[str] = Field(None, description="Optional Git commit message")
+
 class TopicPermissionsUpdate(BaseModel):
     assigned_users: list[str] = Field(default_factory=list, description="List of usernames assigned to this topic")
     is_public: bool = Field(False, description="Whether this topic is accessible to all users")

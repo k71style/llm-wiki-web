@@ -114,6 +114,20 @@ export async function pullTopic(topicId: string): Promise<{ success: boolean; ou
   });
 }
 
+export async function pushTopic(
+  topicId: string,
+  commitMessage?: string
+): Promise<{ success: boolean; pushed: boolean; output: string; message: string }> {
+  return apiFetch<{ success: boolean; pushed: boolean; output: string; message: string }>(
+    `${API_BASE}/topics/${topicId}/push`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commit_message: commitMessage || null }),
+    }
+  );
+}
+
 export async function deleteTopic(topicId: string, deleteFiles: boolean = false): Promise<void> {
   return apiFetch<void>(`${API_BASE}/topics/${topicId}?delete_files=${deleteFiles}`, {
     method: "DELETE",

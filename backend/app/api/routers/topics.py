@@ -1,5 +1,6 @@
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Depends
-from backend.app.models.schemas import TopicCreate, TopicGitImport, TopicInfo, TopicTreeItem, TopicPermissionsUpdate
+from backend.app.models.schemas import TopicCreate, TopicGitImport, TopicInfo, TopicTreeItem, TopicPermissionsUpdate, TopicGitPushRequest
 from backend.app.services.topic_service import topic_service
 from backend.app.security.jwt_auth import User, get_current_user, require_admin
 
@@ -92,3 +93,18 @@ async def pull_topic(topic_id: str, user: User = Depends(require_admin)):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to pull topic: {e}")
+
+@router.post("/{topic_id}/push")
+async def push_topic(
+    topic_id: str,
+    push_in: Optional[TopicGitPushRequest] = None,
+    user: User = Depends(require_admin)
+):
+    """Admin only: Commits and pushes changes to remote Git repository."""
+    try:
+        commit_msg = push_in.commit_message if push_in else None
+        return await topic_service.push_topic(topic_id, commit_message=commit_msg, user=user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to push topic: {e}")

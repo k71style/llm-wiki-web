@@ -438,6 +438,110 @@ class TopicService:
             "message": f"'{topic.title}' 저장소를 성공적으로 동기화(Pull)하였습니다."
         }
 
+    async def push_topic(self, topic_id: str, commit_message: Optional[str] = None, user: Optional[User] = None) -> dict:
+        """Commits local changes and pushes to remote Git repository."""
+        topic = await self.get_topic(topic_id)
+        if not topic:
+            raise ValueError(f"Topic '{topic_id}' not found.")
+
+        topic_path = Path(topic.path)
+        if not (topic_path / ".git").is_dir():
+            raise ValueError(f"주제 '{topic.title}'은(는) Git 저장소가 아닙니다.")
+
+        loop = asyncio.get_running_loop()
+        def _push():
+            git_env = os.environ.copy()
+            git_env["GIT_TERMINAL_PROMPT"] = "0"
+            username = user.username if user else "LLM-Wiki-Admin"
+            git_env["GIT_AUTHOR_NAME"] = username
+            git_env["GIT_AUTHOR_EMAIL"] = f"{username}@llm-wiki.local"
+            git_env["GIT_COMMITTER_NAME"] = username
+            git_env["GIT_COMMITTER_EMAIL"] = f"{username}@llm-wiki.local"
+
+            # 1. Check working directory changes
+            status_res = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(topic_path),
+                env=git_env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30
+            )
+            has_changes = bool(status_res.stdout.strip())
+
+            # 2. Stage and commit changes if any
+            if has_changes:
+                add_res = subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=str(topic_path),
+                    env=git_env,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=30
+                )
+                if add_res.returncode != 0:
+                    raw_err = add_res.stderr or add_res.stdout or "Git add error"
+                    raise RuntimeError(self._sanitize_error(raw_err, []))
+
+                default_msg = f"Update wiki content via LLM Wiki Web by {username}"
+                msg = commit_message.strip() if commit_message and commit_message.strip() else default_msg
+                commit_res = subprocess.run(
+                    ["git", "commit", "-m", msg],
+                    cwd=str(topic_path),
+                    env=git_env,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=30
+                )
+                if commit_res.returncode != 0:
+                    raw_err = commit_res.stderr or commit_res.stdout or "Git commit error"
+                    raise RuntimeError(self._sanitize_error(raw_err, []))
+
+            # 3. Push to remote
+            push_res = subprocess.run(
+                ["git", "push"],
+                cwd=str(topic_path),
+                env=git_env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60
+            )
+            if push_res.returncode != 0:
+                raw_err = push_res.stderr or push_res.stdout or "Git push error"
+                raise RuntimeError(self._sanitize_error(raw_err, []))
+
+            output = (push_res.stderr or push_res.stdout or "").strip()
+            if not has_changes and ("Everything up-to-date" in output or "Everything up to date" in output or not output):
+                return {
+                    "pushed": False,
+                    "output": output or "Everything up-to-date",
+                    "message": "원격 저장소와 이미 동일한 상태이며 커밋할 변경사항이 없습니다."
+                }
+
+            return {
+                "pushed": True,
+                "output": output,
+                "message": f"'{topic.title}'의 변경사항을 원격 저장소에 성공적으로 푸시(Push)하였습니다."
+            }
+
+        try:
+            res = await loop.run_in_executor(None, _push)
+            await self.sync_topic(topic.id)
+            return {
+                "success": True,
+                **res
+            }
+        except Exception as e:
+            raise ValueError(f"Git push 실패: {e}")
+
     def can_access_topic(self, topic: TopicInfo, user: Optional[User]) -> bool:
         """Checks whether the user has access permission to the topic."""
         if not user:

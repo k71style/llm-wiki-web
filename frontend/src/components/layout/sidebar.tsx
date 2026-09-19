@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { TopicInfo, TopicTreeItem } from "@/types";
 import { useAuth } from "@/contexts/auth-context";
-import { pullTopic } from "@/lib/api";
+import { pullTopic, pushTopic } from "@/lib/api";
 import { TopicPermissionsDialog } from "@/components/topic/topic-permissions-dialog";
 
 interface SidebarProps {
@@ -74,23 +74,43 @@ export function Sidebar({
     sources: true,
   });
   const [pulling, setPulling] = useState(false);
-  const [pullMsg, setPullMsg] = useState<string | null>(null);
+  const [pushing, setPushing] = useState(false);
+  const [gitMsg, setGitMsg] = useState<{ text: string; isError?: boolean } | null>(null);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
 
   const handleGitPull = async () => {
-    if (!currentTopic || !currentTopic.is_git_repo || pulling) return;
+    if (!currentTopic || !currentTopic.is_git_repo || pulling || pushing) return;
     setPulling(true);
-    setPullMsg(null);
+    setGitMsg(null);
     try {
       const res = await pullTopic(currentTopic.id);
-      setPullMsg(res.message || "동기화 완료");
+      setGitMsg({ text: res.message || "동기화 완료" });
       onRefresh();
-      setTimeout(() => setPullMsg(null), 3000);
+      setTimeout(() => setGitMsg(null), 3500);
     } catch (err: any) {
-      setPullMsg(err.message || "Git pull 실패");
-      setTimeout(() => setPullMsg(null), 4000);
+      setGitMsg({ text: err.message || "Git pull 실패", isError: true });
+      setTimeout(() => setGitMsg(null), 4500);
     } finally {
       setPulling(false);
+    }
+  };
+
+  const handleGitPush = async () => {
+    if (!currentTopic || !currentTopic.is_git_repo || pulling || pushing) return;
+    const commitMsg = window.prompt("Git 푸시 커밋 메시지를 입력하세요 (비워둘 시 기본 메시지 적용):", "");
+    if (commitMsg === null) return; // 사용자가 취소(Cancel)를 누른 경우
+    setPushing(true);
+    setGitMsg(null);
+    try {
+      const res = await pushTopic(currentTopic.id, commitMsg.trim() || undefined);
+      setGitMsg({ text: res.message || "원격 저장소 푸시 완료" });
+      onRefresh();
+      setTimeout(() => setGitMsg(null), 3500);
+    } catch (err: any) {
+      setGitMsg({ text: err.message || "Git push 실패", isError: true });
+      setTimeout(() => setGitMsg(null), 4500);
+    } finally {
+      setPushing(false);
     }
   };
 
@@ -381,14 +401,24 @@ export function Sidebar({
               </div>
               <div className="flex items-center gap-1">
                 {user?.isAdmin && currentTopic.is_git_repo && (
-                  <button
-                    onClick={handleGitPull}
-                    disabled={pulling}
-                    title="원격 Git 저장소에서 최신 변경사항 가져오기 (Git Pull)"
-                    className={`p-1 hover:text-sky-400 transition rounded ${pulling ? "text-sky-400 animate-spin" : ""}`}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
+                  <>
+                    <button
+                      onClick={handleGitPull}
+                      disabled={pulling || pushing}
+                      title="원격 Git 저장소에서 최신 변경사항 가져오기 (Git Pull)"
+                      className={`p-1 hover:text-sky-400 transition rounded ${pulling ? "text-sky-400 animate-spin" : ""}`}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={handleGitPush}
+                      disabled={pulling || pushing}
+                      title="원격 Git 저장소로 변경사항 올리기 (Git Push)"
+                      className={`p-1 hover:text-emerald-400 transition rounded ${pushing ? "text-emerald-400 animate-spin" : ""}`}
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                    </button>
+                  </>
                 )}
                 {user?.isAdmin && (
                   <button
@@ -406,9 +436,15 @@ export function Sidebar({
                 )}
               </div>
             </div>
-            {pullMsg && (
-              <div className="px-2.5 py-1 text-[10px] bg-sky-500/10 text-sky-300 border-t border-sky-500/20 truncate">
-                {pullMsg}
+            {gitMsg && (
+              <div
+                className={`px-2.5 py-1 text-[10px] border-t truncate ${
+                  gitMsg.isError
+                    ? "bg-destructive/10 text-destructive border-destructive/20"
+                    : "bg-sky-500/10 text-sky-300 border-sky-500/20"
+                }`}
+              >
+                {gitMsg.text}
               </div>
             )}
           </div>
